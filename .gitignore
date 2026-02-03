@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Scripts output
+scripts/
+
+# OS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
