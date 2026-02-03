@@ -17,7 +17,7 @@ import urllib.parse
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 # Configuration
-GITHUB_CLIENT_ID = "Ov23liYto761PIPmtvFf"  # Replace with your GitHub OAuth App Client ID
+GITHUB_CLIENT_ID = "Ov23liCAx7meEKstteI3"
 GITHUB_SCOPES = "codespace user:email"
 CODESPACE_REPO = "vibefoundry/vibefoundry-sandbox"
 REMOTE_PATH = "/workspaces/vibefoundry-sandbox"
