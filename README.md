@@ -10,7 +10,7 @@ A pre-configured Codespace for vibe coding with Claude Code.
 4. Run `claude` in the terminal to start vibe coding
 5. Download your output files when done
 
-[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/YOUR-ORG/vibefoundry-sandbox)
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/vibefoundry/vibefoundry-sandbox)
 
 ## Workflow
 
