@@ -26,9 +26,32 @@ project_folder/
 ## How to Work
 
 1. **Read `meta_data/input_metadata.txt`** to see available files, columns, and data types
-2. **Write Python scripts** that reference `../input_folder/` and `../output_folder/` in code
+2. **Write Python scripts** using the template below
 3. **Save scripts to `scripts/`**
 4. **Run the scripts** - the scripts will access the folders, not you
+
+## IMPORTANT: Script Template
+
+**ALWAYS use this template** for scripts so they work from any directory:
+
+```python
+import os
+import pandas as pd
+
+# Get absolute paths (works from any directory)
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
+INPUT_FOLDER = os.path.join(PROJECT_DIR, "input_folder")
+OUTPUT_FOLDER = os.path.join(PROJECT_DIR, "output_folder")
+
+# Read input files using absolute paths
+df = pd.read_csv(os.path.join(INPUT_FOLDER, "your_file.csv"))
+
+# Save output files using absolute paths
+df.to_csv(os.path.join(OUTPUT_FOLDER, "result.csv"), index=False)
+```
+
+**NEVER use relative paths like `../input_folder/`** - they break when scripts are run from different directories.
 
 ## Metadata
 
