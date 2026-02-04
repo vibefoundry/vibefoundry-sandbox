@@ -9,7 +9,16 @@
       "version": "latest"
     }
   },
-  "postCreateCommand": "npm install -g @anthropic-ai/claude-code && pip install pandas",
+  "postCreateCommand": "npm install -g @anthropic-ai/claude-code && pip install pandas flask flask-cors",
+  "postStartCommand": "nohup python /workspaces/vibefoundry-sandbox/app_folder/sync_server.py > /tmp/sync_server.log 2>&1 &",
+  "forwardPorts": [8787],
+  "portsAttributes": {
+    "8787": {
+      "label": "VibeFoundry Sync",
+      "onAutoForward": "silent",
+      "visibility": "public"
+    }
+  },
   "customizations": {
     "vscode": {
       "settings": {
