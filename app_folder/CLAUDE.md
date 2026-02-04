@@ -58,6 +58,9 @@ df.to_csv(os.path.join(OUTPUT_FOLDER, "result.csv"), index=False)
 Run `python metadatafarmer.py` to refresh metadata after new files are added.
 
 The metadata files contain:
+- **Absolute paths** for each file (use these in your scripts!)
 - File names
 - Row counts
 - Column names and data types
+
+**TIP:** The absolute path shown in the metadata can be used directly in your scripts. Just copy the path from the metadata file.
