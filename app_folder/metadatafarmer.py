@@ -23,6 +23,7 @@ def get_csv_metadata(filepath, base_folder):
 
     return {
         'filepath': rel_path,
+        'absolute_path': os.path.abspath(filepath),
         'file_size_mb': round(stat.st_size / (1024 * 1024), 2),
         'row_count': row_count,
         'column_count': len(df_sample.columns),
@@ -34,6 +35,7 @@ def format_file_metadata(meta):
     """Format metadata for a single file as readable text."""
     lines = [
         f"File: {meta['filepath']}",
+        f"  Absolute Path: {meta['absolute_path']}",
         f"  Size: {meta['file_size_mb']} MB",
         f"  Rows: {meta['row_count']:,}",
         f"  Columns ({meta['column_count']}):",
@@ -79,6 +81,7 @@ def main():
     input_meta_path = os.path.join(META_DATA_FOLDER, 'input_metadata.txt')
     with open(input_meta_path, 'w') as f:
         f.write(f"Input Folder Metadata\n")
+        f.write(f"Folder: {os.path.abspath(INPUT_FOLDER)}\n")
         f.write(f"Generated: {timestamp}\n")
         f.write(f"{'=' * 50}\n\n")
         f.write(input_content)
@@ -89,6 +92,7 @@ def main():
     output_meta_path = os.path.join(META_DATA_FOLDER, 'output_metadata.txt')
     with open(output_meta_path, 'w') as f:
         f.write(f"Output Folder Metadata\n")
+        f.write(f"Folder: {os.path.abspath(OUTPUT_FOLDER)}\n")
         f.write(f"Generated: {timestamp}\n")
         f.write(f"{'=' * 50}\n\n")
         f.write(output_content)
