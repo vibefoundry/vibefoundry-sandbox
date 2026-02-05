@@ -37,6 +37,9 @@ def health():
 @app.route("/files", methods=["GET"])
 def list_files():
     """List all files in the codespace as a tree structure"""
+    # Folders to skip entirely
+    SKIP_FOLDERS = {'node_modules', '__pycache__', '.git', '.venv', 'venv', '.cache'}
+
     def build_tree(path, name):
         result = {
             "name": name,
@@ -53,8 +56,8 @@ def list_files():
                 files = [e for e in entries if not os.path.isdir(os.path.join(path, e))]
 
                 for entry in dirs + files:
-                    # Skip hidden files and __pycache__
-                    if entry.startswith('.') or entry == '__pycache__':
+                    # Skip hidden files and large folders
+                    if entry.startswith('.') or entry in SKIP_FOLDERS:
                         continue
                     child_path = os.path.join(path, entry)
                     result["children"].append(build_tree(child_path, entry))
@@ -67,17 +70,18 @@ def list_files():
 
         return result
 
-    tree = build_tree(APP_FOLDER, "app_folder")
+    # Build tree from BASE_DIR to include all project folders
+    tree = build_tree(BASE_DIR, os.path.basename(BASE_DIR))
     return jsonify({"tree": tree})
 
 
 @app.route("/files/<path:filepath>", methods=["GET"])
 def get_file(filepath):
-    """Get contents of any file"""
-    full_path = os.path.join(APP_FOLDER, filepath)
+    """Get contents of any file in the project"""
+    full_path = os.path.join(BASE_DIR, filepath)
 
-    # Security check - ensure path is within APP_FOLDER
-    if not os.path.abspath(full_path).startswith(os.path.abspath(APP_FOLDER)):
+    # Security check - ensure path is within BASE_DIR
+    if not os.path.abspath(full_path).startswith(os.path.abspath(BASE_DIR)):
         return jsonify({"error": "Invalid path"}), 400
 
     if not os.path.exists(full_path):
