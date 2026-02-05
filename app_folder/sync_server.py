@@ -101,12 +101,12 @@ def get_file(filepath):
 
 @app.route("/scripts", methods=["GET"])
 def list_scripts():
-    """List all Python scripts"""
+    """List all files in scripts folder"""
     scripts = []
     if os.path.exists(SCRIPTS_FOLDER):
         for filename in os.listdir(SCRIPTS_FOLDER):
-            if filename.endswith(".py"):
-                filepath = os.path.join(SCRIPTS_FOLDER, filename)
+            filepath = os.path.join(SCRIPTS_FOLDER, filename)
+            if os.path.isfile(filepath):
                 stat = os.stat(filepath)
                 scripts.append({
                     "name": filename,
@@ -118,17 +118,22 @@ def list_scripts():
 
 @app.route("/scripts/<filename>", methods=["GET"])
 def get_script(filename):
-    """Download a specific script"""
-    if not filename.endswith(".py"):
-        return jsonify({"error": "Invalid file type"}), 400
-
+    """Download a specific file from scripts folder"""
     filepath = os.path.join(SCRIPTS_FOLDER, filename)
+
+    # Security check - ensure path is within SCRIPTS_FOLDER
+    if not os.path.abspath(filepath).startswith(os.path.abspath(SCRIPTS_FOLDER)):
+        return jsonify({"error": "Invalid path"}), 400
+
     if not os.path.exists(filepath):
-        return jsonify({"error": "Script not found"}), 404
+        return jsonify({"error": "File not found"}), 404
 
     # Return file contents as JSON for easier browser handling
-    with open(filepath, "r") as f:
-        content = f.read()
+    try:
+        with open(filepath, "r") as f:
+            content = f.read()
+    except UnicodeDecodeError:
+        return jsonify({"error": "Binary file cannot be read as text"}), 400
 
     return jsonify({
         "name": filename,
@@ -139,9 +144,10 @@ def get_script(filename):
 
 @app.route("/scripts/<filename>", methods=["POST"])
 def upload_script(filename):
-    """Upload a script to the scripts folder"""
-    if not filename.endswith(".py"):
-        return jsonify({"error": "Invalid file type"}), 400
+    """Upload a file to the scripts folder"""
+    # Security check - ensure filename doesn't contain path traversal
+    if "/" in filename or "\\" in filename or ".." in filename:
+        return jsonify({"error": "Invalid filename"}), 400
 
     data = request.get_json()
     if not data or "content" not in data:
@@ -156,7 +162,7 @@ def upload_script(filename):
     return jsonify({
         "status": "ok",
         "name": filename,
-        "message": f"Script {filename} uploaded"
+        "message": f"File {filename} uploaded"
     })
 
 
