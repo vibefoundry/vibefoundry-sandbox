@@ -101,68 +101,88 @@ def get_file(filepath):
 
 @app.route("/scripts", methods=["GET"])
 def list_scripts():
-    """List all files in scripts folder"""
-    scripts = []
-    if os.path.exists(SCRIPTS_FOLDER):
-        for filename in os.listdir(SCRIPTS_FOLDER):
-            filepath = os.path.join(SCRIPTS_FOLDER, filename)
+    """List all files in scripts folder recursively"""
+    def collect_files(folder, prefix=""):
+        files = []
+        if not os.path.exists(folder):
+            return files
+        for entry in os.listdir(folder):
+            # Skip hidden files and node_modules
+            if entry.startswith('.') or entry == 'node_modules' or entry == '__pycache__':
+                continue
+            filepath = os.path.join(folder, entry)
+            relative_path = os.path.join(prefix, entry) if prefix else entry
             if os.path.isfile(filepath):
                 stat = os.stat(filepath)
-                scripts.append({
-                    "name": filename,
+                files.append({
+                    "name": entry,
+                    "path": relative_path,
                     "size": stat.st_size,
                     "modified": stat.st_mtime
                 })
+            elif os.path.isdir(filepath):
+                files.extend(collect_files(filepath, relative_path))
+        return files
+
+    scripts = collect_files(SCRIPTS_FOLDER)
     return jsonify({"scripts": scripts})
 
 
-@app.route("/scripts/<filename>", methods=["GET"])
-def get_script(filename):
-    """Download a specific file from scripts folder"""
-    filepath = os.path.join(SCRIPTS_FOLDER, filename)
+@app.route("/scripts/<path:filepath>", methods=["GET"])
+def get_script(filepath):
+    """Download a specific file from scripts folder (supports nested paths)"""
+    full_path = os.path.join(SCRIPTS_FOLDER, filepath)
 
     # Security check - ensure path is within SCRIPTS_FOLDER
-    if not os.path.abspath(filepath).startswith(os.path.abspath(SCRIPTS_FOLDER)):
+    if not os.path.abspath(full_path).startswith(os.path.abspath(SCRIPTS_FOLDER)):
         return jsonify({"error": "Invalid path"}), 400
 
-    if not os.path.exists(filepath):
+    if not os.path.exists(full_path):
         return jsonify({"error": "File not found"}), 404
 
     # Return file contents as JSON for easier browser handling
     try:
-        with open(filepath, "r") as f:
+        with open(full_path, "r") as f:
             content = f.read()
     except UnicodeDecodeError:
         return jsonify({"error": "Binary file cannot be read as text"}), 400
 
     return jsonify({
-        "name": filename,
+        "name": os.path.basename(filepath),
+        "path": filepath,
         "content": content,
-        "modified": os.stat(filepath).st_mtime
+        "modified": os.stat(full_path).st_mtime
     })
 
 
-@app.route("/scripts/<filename>", methods=["POST"])
-def upload_script(filename):
-    """Upload a file to the scripts folder"""
-    # Security check - ensure filename doesn't contain path traversal
-    if "/" in filename or "\\" in filename or ".." in filename:
-        return jsonify({"error": "Invalid filename"}), 400
+@app.route("/scripts/<path:filepath>", methods=["POST"])
+def upload_script(filepath):
+    """Upload a file to the scripts folder (supports nested paths)"""
+    # Security check - ensure path doesn't escape scripts folder
+    if ".." in filepath:
+        return jsonify({"error": "Invalid path"}), 400
+
+    full_path = os.path.join(SCRIPTS_FOLDER, filepath)
+
+    # Security check - ensure path is within SCRIPTS_FOLDER
+    if not os.path.abspath(full_path).startswith(os.path.abspath(SCRIPTS_FOLDER)):
+        return jsonify({"error": "Invalid path"}), 400
 
     data = request.get_json()
     if not data or "content" not in data:
         return jsonify({"error": "No content provided"}), 400
 
-    os.makedirs(SCRIPTS_FOLDER, exist_ok=True)
-    filepath = os.path.join(SCRIPTS_FOLDER, filename)
+    # Create parent directories if needed
+    os.makedirs(os.path.dirname(full_path), exist_ok=True)
 
-    with open(filepath, "w") as f:
+    with open(full_path, "w") as f:
         f.write(data["content"])
 
     return jsonify({
         "status": "ok",
-        "name": filename,
-        "message": f"File {filename} uploaded"
+        "name": os.path.basename(filepath),
+        "path": filepath,
+        "message": f"File {filepath} uploaded"
     })
 
 
