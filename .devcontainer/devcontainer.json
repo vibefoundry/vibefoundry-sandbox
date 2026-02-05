@@ -7,32 +7,24 @@
     },
     "ghcr.io/devcontainers/features/sshd:1": {
       "version": "latest"
-    }
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {}
   },
-  "postCreateCommand": "npm install -g @anthropic-ai/claude-code && pip install pandas flask flask-cors",
-  "postStartCommand": "nohup python /workspaces/vibefoundry-sandbox/app_folder/sync_server.py > /tmp/sync_server.log 2>&1 &",
+  "postCreateCommand": "npm install -g @anthropic-ai/claude-code && pip install pandas flask flask-cors flask-sock && chmod +x /workspaces/vibefoundry-sandbox/.devcontainer/start-sync.sh",
+  "postAttachCommand": "/workspaces/vibefoundry-sandbox/.devcontainer/start-sync.sh && gh codespace ports visibility 8787:public -c $CODESPACE_NAME 2>/dev/null || true",
   "forwardPorts": [8787],
   "portsAttributes": {
     "8787": {
       "label": "VibeFoundry Sync",
-      "onAutoForward": "silent",
+      "onAutoForward": "notify",
       "visibility": "public"
     }
   },
   "customizations": {
     "vscode": {
       "settings": {
-        "workbench.activityBar.location": "hidden",
-        "workbench.statusBar.visible": false,
-        "editor.minimap.enabled": false,
-        "breadcrumbs.enabled": false,
-        "workbench.editor.showTabs": "none",
-        "workbench.editor.enablePreview": false,
-        "window.sidebar.visible": true,
-        "window.panel.visible": true,
         "terminal.integrated.defaultProfile.linux": "bash"
       }
     }
-  },
-  "waitFor": "postCreateCommand"
+  }
 }
