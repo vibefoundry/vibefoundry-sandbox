@@ -30,6 +30,71 @@ def health():
     return jsonify({"status": "ok", "service": "vibefoundry-sync"})
 
 
+@app.route("/files", methods=["GET"])
+def list_files():
+    """List all files in the codespace as a tree structure"""
+    def build_tree(path, name):
+        result = {
+            "name": name,
+            "path": os.path.relpath(path, BASE_DIR),
+            "isDirectory": os.path.isdir(path)
+        }
+
+        if os.path.isdir(path):
+            result["children"] = []
+            try:
+                entries = sorted(os.listdir(path))
+                # Directories first, then files
+                dirs = [e for e in entries if os.path.isdir(os.path.join(path, e))]
+                files = [e for e in entries if not os.path.isdir(os.path.join(path, e))]
+
+                for entry in dirs + files:
+                    # Skip hidden files and __pycache__
+                    if entry.startswith('.') or entry == '__pycache__':
+                        continue
+                    child_path = os.path.join(path, entry)
+                    result["children"].append(build_tree(child_path, entry))
+            except PermissionError:
+                pass
+        else:
+            stat = os.stat(path)
+            result["size"] = stat.st_size
+            result["modified"] = stat.st_mtime
+
+        return result
+
+    tree = build_tree(APP_FOLDER, "app_folder")
+    return jsonify({"tree": tree})
+
+
+@app.route("/files/<path:filepath>", methods=["GET"])
+def get_file(filepath):
+    """Get contents of any file"""
+    full_path = os.path.join(APP_FOLDER, filepath)
+
+    # Security check - ensure path is within APP_FOLDER
+    if not os.path.abspath(full_path).startswith(os.path.abspath(APP_FOLDER)):
+        return jsonify({"error": "Invalid path"}), 400
+
+    if not os.path.exists(full_path):
+        return jsonify({"error": "File not found"}), 404
+
+    if os.path.isdir(full_path):
+        return jsonify({"error": "Path is a directory"}), 400
+
+    try:
+        with open(full_path, "r") as f:
+            content = f.read()
+        return jsonify({
+            "name": os.path.basename(filepath),
+            "path": filepath,
+            "content": content,
+            "modified": os.stat(full_path).st_mtime
+        })
+    except UnicodeDecodeError:
+        return jsonify({"error": "Binary file cannot be read as text"}), 400
+
+
 @app.route("/scripts", methods=["GET"])
 def list_scripts():
     """List all Python scripts"""
