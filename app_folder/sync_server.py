@@ -12,6 +12,10 @@ import json
 import pty
 import subprocess
 import select
+import struct
+import fcntl
+import termios
+import signal
 
 app = Flask(__name__)
 CORS(app)  # Allow browser connections from any origin
@@ -196,6 +200,12 @@ def get_metadata():
     return jsonify(result)
 
 
+def set_winsize(fd, row, col, xpix=0, ypix=0):
+    """Set terminal window size"""
+    winsize = struct.pack("HHHH", row, col, xpix, ypix)
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
+
+
 @sock.route("/terminal")
 def terminal(ws):
     """WebSocket terminal endpoint"""
@@ -207,6 +217,13 @@ def terminal(ws):
         os.execvp("bash", ["bash"])
     else:
         # Parent process - relay data
+        # Set initial terminal size
+        set_winsize(fd, 40, 60)
+
+        # Make fd non-blocking
+        flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+        fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+
         try:
             while True:
                 # Check for data from terminal
@@ -223,11 +240,23 @@ def terminal(ws):
                 try:
                     data = ws.receive(timeout=0.01)
                     if data:
-                        os.write(fd, data.encode("utf-8"))
+                        # Check for JSON resize command
+                        if data.startswith('{'):
+                            try:
+                                msg = json.loads(data)
+                                if msg.get('type') == 'resize':
+                                    cols = int(msg.get('cols', 60))
+                                    rows = int(msg.get('rows', 40))
+                                    set_winsize(fd, rows, cols)
+                            except:
+                                pass
+                        else:
+                            os.write(fd, data.encode("utf-8"))
                 except:
                     pass
         finally:
             os.close(fd)
+            os.kill(pid, signal.SIGTERM)
             os.waitpid(pid, 0)
 
 
