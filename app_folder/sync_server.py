@@ -240,7 +240,7 @@ def terminal(ws):
                 try:
                     data = ws.receive(timeout=0.01)
                     if data:
-                        # Check for JSON resize command
+                        # Check for JSON commands (resize, ping)
                         if data.startswith('{'):
                             try:
                                 msg = json.loads(data)
@@ -248,6 +248,8 @@ def terminal(ws):
                                     cols = int(msg.get('cols', 60))
                                     rows = int(msg.get('rows', 40))
                                     set_winsize(fd, rows, cols)
+                                elif msg.get('type') == 'ping':
+                                    ws.send(json.dumps({'type': 'pong'}))
                             except:
                                 pass
                         else:
