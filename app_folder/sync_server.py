@@ -4,15 +4,22 @@ VibeFoundry Sync Server
 Simple HTTP server for browser-based file sync with VibeFoundry Assistant
 """
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_file
 from flask_cors import CORS
+from flask_sock import Sock
 import os
+import json
+import pty
 import subprocess
+import select
+import struct
+import fcntl
+import termios
 import signal
-import atexit
 
 app = Flask(__name__)
 CORS(app)  # Allow browser connections from any origin
+sock = Sock(app)
 
 # Paths
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -20,65 +27,11 @@ APP_FOLDER = os.path.join(BASE_DIR, "app_folder")
 SCRIPTS_FOLDER = os.path.join(APP_FOLDER, "scripts")
 METADATA_FOLDER = os.path.join(APP_FOLDER, "meta_data")
 
-# ttyd configuration
-TTYD_PORT = 7681
-ttyd_process = None
-
-
-def start_ttyd():
-    """Start ttyd terminal server"""
-    global ttyd_process
-    if ttyd_process is not None:
-        return
-
-    try:
-        # Start ttyd with CORS allowed, running bash in app_folder
-        ttyd_process = subprocess.Popen(
-            [
-                "ttyd",
-                "-p", str(TTYD_PORT),
-                "-W",  # Allow write (bidirectional)
-                "-t", "fontSize=14",
-                "-t", "fontFamily=Menlo, Monaco, 'Courier New', monospace",
-                "-t", "theme={'background': '#ffffff', 'foreground': '#1e1e1e'}",
-                "bash"
-            ],
-            cwd=APP_FOLDER,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
-        print(f"Started ttyd on port {TTYD_PORT}")
-    except FileNotFoundError:
-        print("ERROR: ttyd not found. Install with: brew install ttyd (macOS) or apt install ttyd (Linux)")
-
-
-def stop_ttyd():
-    """Stop ttyd terminal server"""
-    global ttyd_process
-    if ttyd_process is not None:
-        ttyd_process.terminate()
-        try:
-            ttyd_process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            ttyd_process.kill()
-        ttyd_process = None
-        print("Stopped ttyd")
-
-
-# Register cleanup
-atexit.register(stop_ttyd)
-
 
 @app.route("/health", methods=["GET"])
 def health():
     """Health check endpoint"""
     return jsonify({"status": "ok", "service": "vibefoundry-sync"})
-
-
-@app.route("/terminal-url", methods=["GET"])
-def terminal_url():
-    """Get the ttyd terminal URL"""
-    return jsonify({"port": TTYD_PORT})
 
 
 @app.route("/files", methods=["GET"])
@@ -277,10 +230,71 @@ def get_metadata():
     return jsonify(result)
 
 
+def set_winsize(fd, row, col, xpix=0, ypix=0):
+    """Set terminal window size"""
+    winsize = struct.pack("HHHH", row, col, xpix, ypix)
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
+
+
+# Fixed terminal size - taller for better Claude Code experience
+FIXED_COLS = 80
+FIXED_ROWS = 48
+
+
+@sock.route("/terminal")
+def terminal(ws):
+    """WebSocket terminal endpoint"""
+    pid, fd = pty.fork()
+
+    if pid == 0:
+        # Child process - start bash
+        os.chdir(APP_FOLDER)
+        os.execvp("bash", ["bash"])
+    else:
+        # Parent process - relay data
+        # Set fixed terminal size
+        set_winsize(fd, FIXED_ROWS, FIXED_COLS)
+
+        # Make fd non-blocking
+        flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+        fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+
+        try:
+            while True:
+                # Check for data from terminal
+                r, _, _ = select.select([fd], [], [], 0.1)
+                if fd in r:
+                    try:
+                        data = os.read(fd, 1024)
+                        if data:
+                            ws.send(data.decode("utf-8", errors="replace"))
+                    except OSError:
+                        break
+
+                # Check for data from websocket
+                try:
+                    data = ws.receive(timeout=0.01)
+                    if data:
+                        # Check for JSON commands (resize, ping)
+                        if data.startswith('{'):
+                            try:
+                                msg = json.loads(data)
+                                if msg.get('type') == 'resize':
+                                    # Use fixed size regardless of what frontend sends
+                                    set_winsize(fd, FIXED_ROWS, FIXED_COLS)
+                                # ping messages are just to keep connection alive, no response needed
+                            except:
+                                pass
+                        else:
+                            os.write(fd, data.encode("utf-8"))
+                except:
+                    pass
+        finally:
+            os.close(fd)
+            os.kill(pid, signal.SIGTERM)
+            os.waitpid(pid, 0)
+
+
 if __name__ == "__main__":
     print("Starting VibeFoundry Sync Server on port 8787...")
-    start_ttyd()
-    try:
-        app.run(host="0.0.0.0", port=8787, debug=False)
-    finally:
-        stop_ttyd()
+    app.run(host="0.0.0.0", port=8787, debug=False)
