@@ -243,13 +243,15 @@ FIXED_ROWS = 48
 
 @sock.route("/terminal")
 def terminal(ws):
-    """WebSocket terminal endpoint"""
+    """WebSocket terminal endpoint using tmux for better scroll handling"""
     pid, fd = pty.fork()
 
     if pid == 0:
-        # Child process - start bash
+        # Child process - start tmux session
         os.chdir(APP_FOLDER)
-        os.execvp("bash", ["bash"])
+        os.environ["TERM"] = "xterm-256color"
+        # Use tmux with a named session, -A attaches if exists or creates new
+        os.execvp("tmux", ["tmux", "new-session", "-A", "-s", "vibefoundry"])
     else:
         # Parent process - relay data
         # Set fixed terminal size
@@ -265,7 +267,8 @@ def terminal(ws):
                 r, _, _ = select.select([fd], [], [], 0.1)
                 if fd in r:
                     try:
-                        data = os.read(fd, 1024)
+                        # Larger buffer to avoid splitting escape sequences
+                        data = os.read(fd, 8192)
                         if data:
                             ws.send(data.decode("utf-8", errors="replace"))
                     except OSError:
