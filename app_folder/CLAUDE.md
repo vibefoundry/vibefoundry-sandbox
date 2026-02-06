@@ -1,8 +1,12 @@
 # Project Context
 
-You are working inside `app_folder/`.
+You are working inside a **virtual environment** in `app_folder/`. The raw data files are stored locally on the user's machine and are not directly accessible to you.
 
-## IMPORTANT: Folder Access Rules
+## CRITICAL: Never Run Scripts
+
+**DO NOT run Python scripts.** You can only write them. The user will run the scripts locally where the data exists.
+
+## CRITICAL: Folder Access Rules
 
 **NEVER access `../input_folder/` or `../output_folder/` directly.**
 
@@ -10,29 +14,38 @@ You are working inside `app_folder/`.
 - Do NOT list files in input_folder or output_folder
 - Do NOT browse or explore those directories
 
-Instead, read `meta_data/input_metadata.txt` to understand what data is available.
+## How to Understand the Data
+
+When asked ANY question about the data (what's in it, what columns exist, what the data looks like, etc.):
+
+1. **Read `meta_data/input_metadata.txt`** - This contains descriptions of all available files, their columns, data types, and sample values
+2. Use this metadata to understand what data is available without accessing the raw files
+
+## Answering Questions About Data
+
+When asked a question that requires analyzing the data (e.g., "What are the top 10 states for sales?", "Which customers are most likely to churn?", "Show me the monthly trends"):
+
+**ALWAYS respond with a Python script** that:
+1. Reads the relevant input file(s)
+2. Performs the analysis
+3. Outputs the answer as a table (printed to console or saved to output_folder)
+
+Do NOT attempt to answer data questions directly - you cannot see the raw data. Instead, write a script that will produce the answer when the user runs it.
 
 ## Folder Structure
 
 ```
 project_folder/
-├── input_folder/      <- DO NOT ACCESS
-├── output_folder/     <- DO NOT ACCESS
-└── app_folder/        <- You are here - stay here
-    ├── meta_data/     <- Read this for file info
+├── input_folder/      <- DO NOT ACCESS (local data)
+├── output_folder/     <- Scripts save results here
+└── app_folder/        <- You are here
+    ├── meta_data/     <- Read this to understand available data
     └── scripts/       <- Save Python scripts here
 ```
 
-## How to Work
+## Script Template
 
-1. **Read `meta_data/input_metadata.txt`** to see available files, columns, and data types
-2. **Write Python scripts** using the template below
-3. **Save scripts to `scripts/`**
-4. **Run the scripts** - the scripts will access the folders, not you
-
-## IMPORTANT: Script Template
-
-**ALWAYS use this template** for scripts so they work from any directory:
+**ALWAYS use this template** so scripts work from any directory:
 
 ```python
 import os
@@ -47,20 +60,24 @@ OUTPUT_FOLDER = os.path.join(PROJECT_DIR, "output_folder")
 # Read input files using absolute paths
 df = pd.read_csv(os.path.join(INPUT_FOLDER, "your_file.csv"))
 
-# Save output files using absolute paths
-df.to_csv(os.path.join(OUTPUT_FOLDER, "result.csv"), index=False)
+# Perform analysis
+result = df.groupby("column").sum()
+
+# Output as table
+print(result.to_string())
+
+# Or save to output folder
+result.to_csv(os.path.join(OUTPUT_FOLDER, "result.csv"), index=False)
 ```
 
 **NEVER use relative paths like `../input_folder/`** - they break when scripts are run from different directories.
 
-## Metadata
+## Refreshing Metadata
 
 Run `python metadatafarmer.py` to refresh metadata after new files are added.
 
 The metadata files contain:
-- **Absolute paths** for each file (use these in your scripts!)
-- File names
-- Row counts
+- Absolute paths for each file
+- File names and row counts
 - Column names and data types
-
-**TIP:** The absolute path shown in the metadata can be used directly in your scripts. Just copy the path from the metadata file.
+- Sample values
