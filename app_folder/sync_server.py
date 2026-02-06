@@ -236,9 +236,9 @@ def set_winsize(fd, row, col, xpix=0, ypix=0):
     fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
 
 
-# Fixed terminal size - classic VT100 standard (80x24) for consistent formatting
+# Fixed terminal size - taller for better Claude Code experience
 FIXED_COLS = 80
-FIXED_ROWS = 24
+FIXED_ROWS = 48
 
 
 @sock.route("/terminal")
