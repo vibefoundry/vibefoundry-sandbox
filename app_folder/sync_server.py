@@ -236,6 +236,11 @@ def set_winsize(fd, row, col, xpix=0, ypix=0):
     fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
 
 
+# Fixed terminal size - classic VT100 standard (80x24) for consistent formatting
+FIXED_COLS = 80
+FIXED_ROWS = 24
+
+
 @sock.route("/terminal")
 def terminal(ws):
     """WebSocket terminal endpoint"""
@@ -247,8 +252,8 @@ def terminal(ws):
         os.execvp("bash", ["bash"])
     else:
         # Parent process - relay data
-        # Set initial terminal size
-        set_winsize(fd, 40, 60)
+        # Set fixed terminal size
+        set_winsize(fd, FIXED_ROWS, FIXED_COLS)
 
         # Make fd non-blocking
         flags = fcntl.fcntl(fd, fcntl.F_GETFL)
@@ -275,11 +280,9 @@ def terminal(ws):
                             try:
                                 msg = json.loads(data)
                                 if msg.get('type') == 'resize':
-                                    cols = int(msg.get('cols', 60))
-                                    rows = int(msg.get('rows', 40))
-                                    set_winsize(fd, rows, cols)
-                                elif msg.get('type') == 'ping':
-                                    ws.send(json.dumps({'type': 'pong'}))
+                                    # Use fixed size regardless of what frontend sends
+                                    set_winsize(fd, FIXED_ROWS, FIXED_COLS)
+                                # ping messages are just to keep connection alive, no response needed
                             except:
                                 pass
                         else:
