@@ -28,7 +28,9 @@ When asked a question that requires analyzing the data (e.g., "What are the top 
 **ALWAYS respond with a Python script** that:
 1. Reads the relevant input file(s)
 2. Performs the analysis
-3. Outputs the answer as a table (printed to console or saved to output_folder)
+3. **Saves the result as a CSV to output_folder** (REQUIRED)
+
+**Whenever you create a Python script to answer a question, always ensure that it has a dataframe output saved to the output_folder.** This is how the user sees the results.
 
 Do NOT attempt to answer data questions directly - you cannot see the raw data. Instead, write a script that will produce the answer when the user runs it.
 
@@ -63,11 +65,9 @@ df = pd.read_csv(os.path.join(INPUT_FOLDER, "your_file.csv"))
 # Perform analysis
 result = df.groupby("column").sum()
 
-# Output as table
-print(result.to_string())
-
-# Or save to output folder
+# ALWAYS save result to output folder
 result.to_csv(os.path.join(OUTPUT_FOLDER, "result.csv"), index=False)
+print(f"Saved result to {os.path.join(OUTPUT_FOLDER, 'result.csv')}")
 ```
 
 **NEVER use relative paths like `../input_folder/`** - they break when scripts are run from different directories.
