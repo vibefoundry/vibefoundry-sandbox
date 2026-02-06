@@ -10,7 +10,7 @@
     },
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },
-  "postCreateCommand": "npm install -g @anthropic-ai/claude-code && pip install pandas flask flask-cors flask-sock && chmod +x /workspaces/vibefoundry-sandbox/.devcontainer/start-sync.sh",
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y tmux && npm install -g @anthropic-ai/claude-code && pip install pandas flask flask-cors flask-sock && chmod +x /workspaces/vibefoundry-sandbox/.devcontainer/start-sync.sh",
   "postAttachCommand": "/workspaces/vibefoundry-sandbox/.devcontainer/start-sync.sh && gh codespace ports visibility 8787:public -c $CODESPACE_NAME 2>/dev/null || true",
   "forwardPorts": [8787],
   "portsAttributes": {
