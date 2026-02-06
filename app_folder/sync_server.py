@@ -103,20 +103,28 @@ def get_file(filepath):
         return jsonify({"error": "Binary file cannot be read as text"}), 400
 
 
+# Files that should never be synced to the client
+EXCLUDED_FILES = {'sync_server.py', 'metadatafarmer.py', 'CLAUDE.md'}
+EXCLUDED_DIRS = {'meta_data', '__pycache__', 'node_modules'}
+
+
 @app.route("/scripts", methods=["GET"])
 def list_scripts():
-    """List all files in scripts folder recursively"""
+    """List all files in app_folder recursively (excluding server files)"""
     def collect_files(folder, prefix=""):
         files = []
         if not os.path.exists(folder):
             return files
         for entry in os.listdir(folder):
-            # Skip hidden files and node_modules
-            if entry.startswith('.') or entry == 'node_modules' or entry == '__pycache__':
+            # Skip hidden files, excluded dirs, and excluded files
+            if entry.startswith('.') or entry in EXCLUDED_DIRS:
                 continue
             filepath = os.path.join(folder, entry)
             relative_path = os.path.join(prefix, entry) if prefix else entry
             if os.path.isfile(filepath):
+                # Skip excluded files
+                if entry in EXCLUDED_FILES:
+                    continue
                 stat = os.stat(filepath)
                 files.append({
                     "name": entry,
@@ -128,17 +136,22 @@ def list_scripts():
                 files.extend(collect_files(filepath, relative_path))
         return files
 
-    scripts = collect_files(SCRIPTS_FOLDER)
+    scripts = collect_files(APP_FOLDER)
     return jsonify({"scripts": scripts})
 
 
 @app.route("/scripts/<path:filepath>", methods=["GET"])
 def get_script(filepath):
-    """Download a specific file from scripts folder (supports nested paths)"""
-    full_path = os.path.join(SCRIPTS_FOLDER, filepath)
+    """Download a specific file from app_folder (supports nested paths)"""
+    # Block access to excluded files
+    filename = os.path.basename(filepath)
+    if filename in EXCLUDED_FILES:
+        return jsonify({"error": "Access denied"}), 403
 
-    # Security check - ensure path is within SCRIPTS_FOLDER
-    if not os.path.abspath(full_path).startswith(os.path.abspath(SCRIPTS_FOLDER)):
+    full_path = os.path.join(APP_FOLDER, filepath)
+
+    # Security check - ensure path is within APP_FOLDER
+    if not os.path.abspath(full_path).startswith(os.path.abspath(APP_FOLDER)):
         return jsonify({"error": "Invalid path"}), 400
 
     if not os.path.exists(full_path):
@@ -161,15 +174,20 @@ def get_script(filepath):
 
 @app.route("/scripts/<path:filepath>", methods=["POST"])
 def upload_script(filepath):
-    """Upload a file to the scripts folder (supports nested paths)"""
-    # Security check - ensure path doesn't escape scripts folder
+    """Upload a file to the app_folder (supports nested paths)"""
+    # Block uploads to excluded files
+    filename = os.path.basename(filepath)
+    if filename in EXCLUDED_FILES:
+        return jsonify({"error": "Cannot overwrite protected file"}), 403
+
+    # Security check - ensure path doesn't escape app folder
     if ".." in filepath:
         return jsonify({"error": "Invalid path"}), 400
 
-    full_path = os.path.join(SCRIPTS_FOLDER, filepath)
+    full_path = os.path.join(APP_FOLDER, filepath)
 
-    # Security check - ensure path is within SCRIPTS_FOLDER
-    if not os.path.abspath(full_path).startswith(os.path.abspath(SCRIPTS_FOLDER)):
+    # Security check - ensure path is within APP_FOLDER
+    if not os.path.abspath(full_path).startswith(os.path.abspath(APP_FOLDER)):
         return jsonify({"error": "Invalid path"}), 400
 
     data = request.get_json()
