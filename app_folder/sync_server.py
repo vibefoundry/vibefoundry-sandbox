@@ -238,7 +238,7 @@ def set_winsize(fd, row, col, xpix=0, ypix=0):
 
 # Fixed terminal size - taller for better Claude Code experience
 FIXED_COLS = 80
-FIXED_ROWS = 48
+FIXED_ROWS = 68
 
 
 @sock.route("/terminal")
