@@ -303,7 +303,8 @@ def terminal(ws):
                                 if msg.get('type') == 'resize':
                                     # Use fixed size regardless of what frontend sends
                                     set_winsize(fd, FIXED_ROWS, FIXED_COLS)
-                                # ping messages are just to keep connection alive, no response needed
+                                elif msg.get('type') == 'ping':
+                                    ws.send('{"type":"pong"}')
                             except:
                                 pass
                         else:
