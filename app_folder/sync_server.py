@@ -21,6 +21,12 @@ app = Flask(__name__)
 CORS(app)  # Allow browser connections from any origin
 sock = Sock(app)
 
+# Log all requests to stdout to keep codespace alive
+@app.after_request
+def log_request(response):
+    print(f"[{request.method}] {request.path} - {response.status_code}", flush=True)
+    return response
+
 # Paths
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 APP_FOLDER = os.path.join(BASE_DIR, "app_folder")
