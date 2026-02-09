@@ -523,26 +523,6 @@ function App() {
       {/* Main Content Area */}
       <div className="main-area">
         <div className={`sidebar ${isResizing ? 'resizing' : ''}`} style={{ width: sidebarWidth }}>
-          {canWrite && tree.length > 0 && (
-            <div className={`sidebar-controls ${syncControlsCollapsed ? 'collapsed' : ''}`}>
-              <div className="sidebar-controls-header" onClick={() => setSyncControlsCollapsed(!syncControlsCollapsed)}>
-                <span className={`status-dot ${syncConnection.isConnected ? 'connected' : ''}`}></span>
-                <span>{syncConnection.isConnected ? 'Connected' : 'Not connected'}</span>
-                <span className="collapse-icon">{syncControlsCollapsed ? '▼' : '▲'}</span>
-              </div>
-              <div className="sidebar-controls-body" style={{ display: syncControlsCollapsed ? 'none' : 'block' }}>
-                <CodespaceSync
-                  projectPath={projectPath}
-                  onSyncComplete={() => {
-                    handleRefresh()
-                    if (activeTab === 'codespace') loadCodespaceFiles()
-                  }}
-                  onConnectionChange={setSyncConnection}
-                />
-              </div>
-            </div>
-          )}
-
           {/* Repository Tabs */}
           {canWrite && tree.length > 0 && syncConnection.syncUrl && (
             <div className="repo-tabs">
@@ -713,9 +693,17 @@ function App() {
                     Launch Claude Code in Virtual Sandbox
                   </button>
                 ) : (
-                  <span className="terminal-launch-message">
-                    Choose a Code Space to Launch Claude Code
-                  </span>
+                  <div className="terminal-connect-panel">
+                    <h3>Connect to Code Space</h3>
+                    <CodespaceSync
+                      projectPath={projectPath}
+                      onSyncComplete={() => {
+                        handleRefresh()
+                        if (activeTab === 'codespace') loadCodespaceFiles()
+                      }}
+                      onConnectionChange={setSyncConnection}
+                    />
+                  </div>
                 )}
               </div>
             )}
