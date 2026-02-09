@@ -69,10 +69,20 @@ function Terminal({ syncUrl, isConnected, autoLaunchClaude = false }) {
     const ws = new WebSocket(wsUrl)
     wsRef.current = ws
 
+    // Keepalive ping interval
+    let pingInterval = null
+
     ws.onopen = () => {
       setIsTerminalConnected(true)
       xterm.clear()
       ws.send(JSON.stringify({ type: 'resize', cols: FIXED_COLS, rows: FIXED_ROWS }))
+
+      // Start keepalive ping every 25 seconds
+      pingInterval = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'ping' }))
+        }
+      }, 25000)
 
       // Auto-launch Claude Code if requested and not already launched
       if (autoLaunchClaude && !hasLaunchedClaudeRef.current) {
@@ -92,6 +102,7 @@ function Terminal({ syncUrl, isConnected, autoLaunchClaude = false }) {
     ws.onclose = () => {
       setIsTerminalConnected(false)
       hasLaunchedClaudeRef.current = false  // Reset so next launch will auto-run claude
+      if (pingInterval) clearInterval(pingInterval)
       xterm.writeln('\r\n\x1b[31mConnection closed\x1b[0m')
     }
 
@@ -108,6 +119,7 @@ function Terminal({ syncUrl, isConnected, autoLaunchClaude = false }) {
     })
 
     return () => {
+      if (pingInterval) clearInterval(pingInterval)
       inputDisposable.dispose()
       ws.close()
       xterm.dispose()

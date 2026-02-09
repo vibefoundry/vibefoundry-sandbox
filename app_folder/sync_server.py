@@ -299,12 +299,14 @@ def terminal(ws):
                 try:
                     data = ws.receive(timeout=0.01)
                     if data:
-                        # Check for JSON commands (resize)
+                        # Check for JSON commands (resize, ping)
                         if data.startswith('{'):
                             try:
                                 msg = json.loads(data)
                                 if msg.get('type') == 'resize':
                                     set_winsize(fd, FIXED_ROWS, FIXED_COLS)
+                                elif msg.get('type') == 'ping':
+                                    ws.send('{"type":"pong"}')
                             except:
                                 pass
                         else:
