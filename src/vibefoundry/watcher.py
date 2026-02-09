@@ -34,6 +34,7 @@ class FileWatcher:
         project_folder: Path,
         on_data_change: Optional[Callable[[], None]] = None,
         on_script_change: Optional[Callable[[Path], None]] = None,
+        on_output_file_change: Optional[Callable[[Path, str], None]] = None,  # (path, change_type)
         poll_interval: float = 1.0
     ):
         self.project_folder = project_folder
@@ -43,6 +44,7 @@ class FileWatcher:
 
         self.on_data_change = on_data_change
         self.on_script_change = on_script_change
+        self.on_output_file_change = on_output_file_change
         self.poll_interval = poll_interval
 
         self.state = FileState()
@@ -118,6 +120,12 @@ class FileWatcher:
                 # Trigger callbacks
                 if (input_changes or output_changes) and self.on_data_change:
                     self.on_data_change()
+
+                # Notify about output file changes for auto-preview
+                if output_changes and self.on_output_file_change:
+                    for change in output_changes:
+                        if change.change_type in ("created", "modified"):
+                            self.on_output_file_change(Path(change.path), change.change_type)
 
                 if script_changes and self.on_script_change:
                     for change in script_changes:

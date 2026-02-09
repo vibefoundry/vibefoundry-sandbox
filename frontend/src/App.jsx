@@ -198,6 +198,74 @@ function App() {
     }
   }, [projectPath])
 
+  // WebSocket for auto-preview of new output files
+  useEffect(() => {
+    if (!projectPath) return
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsUrl = `${protocol}//${window.location.host}/ws/watch`
+    let ws = null
+
+    const connect = () => {
+      ws = new WebSocket(wsUrl)
+
+      ws.onmessage = async (event) => {
+        try {
+          const data = JSON.parse(event.data)
+          if (data.type === 'output_file_change' && data.path) {
+            // Auto-select the new/modified output file for preview
+            const filePath = data.path
+            const fileName = filePath.split('/').pop()
+
+            // Only auto-preview data files (csv, xlsx, etc.)
+            const ext = fileName.split('.').pop()?.toLowerCase()
+            if (['csv', 'xlsx', 'xls'].includes(ext)) {
+              setSelectedFile({ name: fileName, path: filePath })
+              setLoading(true)
+
+              try {
+                const res = await fetch(`/api/files/read?path=${encodeURIComponent(filePath)}`)
+                if (res.ok) {
+                  const fileData = await res.json()
+                  if (fileData.type === 'dataframe') {
+                    setFileContent({
+                      type: 'dataframe',
+                      columns: fileData.columns,
+                      columnInfo: fileData.columnInfo,
+                      data: fileData.data,
+                      filename: fileData.filename,
+                      filePath: fileData.filePath,
+                      totalRows: fileData.totalRows,
+                      offset: fileData.offset,
+                      limit: fileData.limit
+                    })
+                  }
+                }
+              } catch (err) {
+                console.error('Failed to load output file:', err)
+              } finally {
+                setLoading(false)
+              }
+            }
+          }
+        } catch (e) {
+          // Ignore parse errors for keepalive messages
+        }
+      }
+
+      ws.onclose = () => {
+        // Reconnect after delay
+        setTimeout(connect, 3000)
+      }
+    }
+
+    connect()
+
+    return () => {
+      if (ws) ws.close()
+    }
+  }, [projectPath])
+
   // Open folder picker
   const handleOpenFolder = () => {
     setShowFolderPicker(true)

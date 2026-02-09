@@ -162,7 +162,8 @@ async def select_folder(request: FolderSelectRequest):
     state.watcher = FileWatcher(
         folder_path,
         on_data_change=lambda: asyncio.create_task(notify_data_change()),
-        on_script_change=lambda p: asyncio.create_task(notify_script_change(p))
+        on_script_change=lambda p: asyncio.create_task(notify_script_change(p)),
+        on_output_file_change=lambda p, t: asyncio.create_task(notify_output_file_change(p, t))
     )
     await state.watcher.start_async()
 
@@ -898,6 +899,29 @@ async def notify_data_change():
 async def notify_script_change(script_path: Path):
     """Notify all WebSocket clients of script change"""
     message = f'{{"type": "script_change", "path": "{script_path}"}}'
+    disconnected = []
+
+    for client in state.websocket_clients:
+        try:
+            await client.send_text(message)
+        except Exception:
+            disconnected.append(client)
+
+    for client in disconnected:
+        state.websocket_clients.remove(client)
+
+
+async def notify_output_file_change(file_path: Path, change_type: str):
+    """Notify all WebSocket clients of output file change for auto-preview"""
+    # Get relative path from project folder
+    rel_path = str(file_path)
+    if state.project_folder:
+        try:
+            rel_path = str(file_path.relative_to(state.project_folder))
+        except ValueError:
+            pass
+
+    message = f'{{"type": "output_file_change", "path": "{rel_path}", "change_type": "{change_type}"}}'
     disconnected = []
 
     for client in state.websocket_clients:
