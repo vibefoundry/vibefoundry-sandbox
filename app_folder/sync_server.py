@@ -254,6 +254,50 @@ def get_metadata():
     return jsonify(result)
 
 
+@app.route("/reset", methods=["POST"])
+def reset_codespace():
+    """Reset the codespace to latest dev-branch (git reset --hard && git pull)"""
+    try:
+        # Run git fetch first
+        fetch_result = subprocess.run(
+            ["git", "fetch", "origin"],
+            cwd=BASE_DIR,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+
+        # Reset to origin/dev-branch
+        reset_result = subprocess.run(
+            ["git", "reset", "--hard", "origin/dev-branch"],
+            cwd=BASE_DIR,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+
+        # Pull latest
+        pull_result = subprocess.run(
+            ["git", "pull", "origin", "dev-branch"],
+            cwd=BASE_DIR,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+
+        return jsonify({
+            "status": "ok",
+            "message": "Codespace reset to latest dev-branch",
+            "fetch": {"stdout": fetch_result.stdout, "stderr": fetch_result.stderr},
+            "reset": {"stdout": reset_result.stdout, "stderr": reset_result.stderr},
+            "pull": {"stdout": pull_result.stdout, "stderr": pull_result.stderr}
+        })
+    except subprocess.TimeoutExpired:
+        return jsonify({"status": "error", "message": "Git command timed out"}), 500
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 def set_winsize(fd, row, col, xpix=0, ypix=0):
     """Set terminal window size"""
     winsize = struct.pack("HHHH", row, col, xpix, ypix)
