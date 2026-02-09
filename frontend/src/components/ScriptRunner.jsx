@@ -57,11 +57,16 @@ function ScriptRunner({ folderName, height }) {
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data)
-          if (data.type === 'script_change' && autoRun) {
-            // Auto-run the modified script
-            const scriptPath = data.path
-            addOutput(`Script modified: ${scriptPath.split('/').pop()}`, 'info')
-            runScripts([scriptPath])
+          if (data.type === 'script_change') {
+            // Refresh scripts list
+            fetchScripts()
+
+            // Auto-run the modified script if enabled
+            if (autoRun) {
+              const scriptPath = data.path
+              addOutput(`Script modified: ${scriptPath.split('/').pop()}`, 'info')
+              runScripts([scriptPath])
+            }
           } else if (data.type === 'data_change') {
             addOutput('Data files changed - metadata updated', 'info')
           }
