@@ -81,6 +81,19 @@
   cursor: not-allowed;
 }
 
+.auto-run-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.auto-run-label input {
+  cursor: pointer;
+}
+
 .script-runner-body {
   display: flex;
   flex-direction: row;

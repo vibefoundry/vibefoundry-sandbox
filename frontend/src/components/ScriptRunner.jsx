@@ -12,7 +12,7 @@ function ScriptRunner({ folderName, height }) {
   const [selectedScripts, setSelectedScripts] = useState(new Set())
   const [isRunning, setIsRunning] = useState(false)
   const [output, setOutput] = useState([])
-  const [autoRun, setAutoRun] = useState(false)
+  const [autoRun, setAutoRun] = useState(true)
   const [collapsed, setCollapsed] = useState(false)
   const [scriptsWidth, setScriptsWidth] = useState(200)
   const [isResizingScripts, setIsResizingScripts] = useState(false)
@@ -276,6 +276,14 @@ function ScriptRunner({ folderName, height }) {
         </div>
         {activeTab === 'scripts' && (
           <div className="script-runner-header-actions" onClick={(e) => e.stopPropagation()}>
+            <label className="auto-run-label">
+              <input
+                type="checkbox"
+                checked={autoRun}
+                onChange={(e) => setAutoRun(e.target.checked)}
+              />
+              Auto
+            </label>
             <button
               className="btn-header"
               onClick={handleRun}
