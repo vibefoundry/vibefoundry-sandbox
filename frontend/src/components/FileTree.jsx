@@ -525,6 +525,7 @@ const NewItemDialog = ({ type, parentPath, onSubmit, onCancel }) => {
 
 // Delete Confirmation Dialog
 const DeleteDialog = ({ node, onConfirm, onCancel }) => {
+  if (!node || !node.name) return null
   return createPortal(
     <div className="dialog-overlay" onClick={onCancel}>
       <div className="dialog" onClick={e => e.stopPropagation()}>
