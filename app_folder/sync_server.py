@@ -256,7 +256,7 @@ def get_metadata():
 
 @app.route("/reset", methods=["POST"])
 def reset_codespace():
-    """Reset the codespace to latest dev-branch (git reset --hard && git pull)"""
+    """Reset the codespace to latest dev-branch (git reset --hard, clean, pull)"""
     try:
         # Run git fetch first
         fetch_result = subprocess.run(
@@ -270,6 +270,15 @@ def reset_codespace():
         # Reset to origin/dev-branch
         reset_result = subprocess.run(
             ["git", "reset", "--hard", "origin/dev-branch"],
+            cwd=BASE_DIR,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+
+        # Clean untracked files and directories (removes scripts, etc.)
+        clean_result = subprocess.run(
+            ["git", "clean", "-fd"],
             cwd=BASE_DIR,
             capture_output=True,
             text=True,
@@ -290,6 +299,7 @@ def reset_codespace():
             "message": "Codespace reset to latest dev-branch",
             "fetch": {"stdout": fetch_result.stdout, "stderr": fetch_result.stderr},
             "reset": {"stdout": reset_result.stdout, "stderr": reset_result.stderr},
+            "clean": {"stdout": clean_result.stdout, "stderr": clean_result.stderr},
             "pull": {"stdout": pull_result.stdout, "stderr": pull_result.stderr}
         })
     except subprocess.TimeoutExpired:
