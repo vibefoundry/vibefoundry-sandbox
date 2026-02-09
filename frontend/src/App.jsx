@@ -229,10 +229,13 @@ function App() {
           setFileContent({
             type: 'dataframe',
             columns: data.columns,
+            columnInfo: data.columnInfo,
             data: data.data,
             filename: data.filename,
-            rowCount: data.rowCount,
-            truncated: data.truncated
+            filePath: data.filePath,
+            totalRows: data.totalRows,
+            offset: data.offset,
+            limit: data.limit
           })
         } else {
           const fileType = getFileType(file.name)

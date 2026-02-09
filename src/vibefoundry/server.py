@@ -27,7 +27,40 @@ class AppState:
     websocket_clients: list[WebSocket] = []
 
 
+class DataFrameState:
+    """Holds the currently viewed DataFrame in memory"""
+    def __init__(self):
+        self.df = None  # pandas DataFrame
+        self.file_path: Optional[str] = None
+        self.column_info: dict = {}  # {col: {type, min, max, values}}
+        self.current_filters: dict = {}
+        self.current_sort: Optional[tuple] = None  # (column, direction)
+        self._filtered_df = None  # Cached filtered/sorted DataFrame
+
+    def clear(self):
+        """Clear the DataFrame from memory"""
+        self.df = None
+        self.file_path = None
+        self.column_info = {}
+        self.current_filters = {}
+        self.current_sort = None
+        self._filtered_df = None
+
+    def get_processed_df(self):
+        """Get the filtered/sorted DataFrame, using cache if available"""
+        if self.df is None:
+            return None
+        if self._filtered_df is not None:
+            return self._filtered_df
+        return self.df
+
+    def invalidate_cache(self):
+        """Invalidate the filtered/sorted cache"""
+        self._filtered_df = None
+
+
 state = AppState()
+df_state = DataFrameState()
 
 
 # Request/Response models
@@ -339,26 +372,57 @@ async def read_file(path: str):
     dataframe_extensions = {'.csv', '.xlsx', '.xls'}
 
     if ext in dataframe_extensions:
-        # Parse as dataframe and return columns + data
-        # Virtual scrolling on frontend allows loading all rows
+        # Parse as dataframe, compute metadata, return first chunk
         try:
             if ext == '.csv':
                 df = pd.read_csv(file_path)
             else:
                 df = pd.read_excel(file_path)
 
-            # Convert to JSON-serializable format
-            df = df.fillna('')
-            columns = df.columns.tolist()
-            data = df.to_dict(orient='records')
+            # Store in global state (clear previous)
+            df_state.clear()
+            df_state.df = df.fillna('')
+            df_state.file_path = path
+
+            # Compute column metadata using pandas
+            column_info = {}
+            for col in df.columns:
+                series = df[col]
+                # Check if numeric
+                if pd.api.types.is_numeric_dtype(series):
+                    numeric_vals = series.dropna()
+                    column_info[col] = {
+                        "type": "numeric",
+                        "min": float(numeric_vals.min()) if len(numeric_vals) > 0 else 0,
+                        "max": float(numeric_vals.max()) if len(numeric_vals) > 0 else 0
+                    }
+                else:
+                    # Categorical - get unique values
+                    unique_vals = series.dropna().unique().tolist()[:500]
+                    # Convert to strings for JSON serialization
+                    unique_vals = [str(v) for v in unique_vals if v != '']
+                    column_info[col] = {
+                        "type": "categorical",
+                        "values": unique_vals
+                    }
+
+            df_state.column_info = column_info
+
+            # Return first 200 rows
+            CHUNK_SIZE = 200
+            columns = df_state.df.columns.tolist()
+            first_chunk = df_state.df.head(CHUNK_SIZE).to_dict(orient='records')
 
             return {
                 "type": "dataframe",
+                "filePath": path,
                 "columns": columns,
-                "data": data,
-                "filename": file_path.name,
-                "rowCount": len(data),
-                "truncated": False
+                "columnInfo": column_info,
+                "data": first_chunk,
+                "totalRows": len(df_state.df),
+                "offset": 0,
+                "limit": CHUNK_SIZE,
+                "filename": file_path.name
             }
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to parse file: {str(e)}")
@@ -402,6 +466,114 @@ async def write_file(request: WriteFileRequest):
     file_path.write_text(request.content, encoding='utf-8')
 
     return {"success": True, "path": request.path}
+
+
+# DataFrame streaming endpoints
+
+class DataFrameQueryRequest(BaseModel):
+    filePath: str
+    filters: dict = {}
+    sort: Optional[dict] = None  # {column: str, direction: "asc"|"desc"}
+
+
+@app.get("/api/dataframe/rows")
+async def get_dataframe_rows(
+    filePath: str,
+    offset: int = 0,
+    limit: int = 200
+):
+    """Get paginated rows from the cached DataFrame"""
+    import pandas as pd
+
+    if df_state.df is None or df_state.file_path != filePath:
+        raise HTTPException(status_code=400, detail="DataFrame not loaded. Read the file first.")
+
+    # Get the processed (filtered/sorted) DataFrame
+    df = df_state.get_processed_df()
+    if df is None:
+        raise HTTPException(status_code=400, detail="DataFrame not available")
+
+    # Slice the requested rows
+    chunk = df.iloc[offset:offset + limit].to_dict(orient='records')
+
+    return {
+        "data": chunk,
+        "offset": offset,
+        "limit": limit,
+        "totalRows": len(df)
+    }
+
+
+@app.post("/api/dataframe/query")
+async def query_dataframe(request: DataFrameQueryRequest):
+    """Apply filters and/or sort to the DataFrame, return first chunk"""
+    import pandas as pd
+
+    if df_state.df is None or df_state.file_path != request.filePath:
+        raise HTTPException(status_code=400, detail="DataFrame not loaded. Read the file first.")
+
+    # Start with the original DataFrame
+    df = df_state.df.copy()
+
+    # Apply filters
+    for column, filter_val in request.filters.items():
+        if column not in df.columns:
+            continue
+
+        if isinstance(filter_val, dict):
+            # Numeric range filter
+            if filter_val.get('min') not in (None, '', 'null'):
+                try:
+                    min_val = float(filter_val['min'])
+                    df = df[pd.to_numeric(df[column], errors='coerce') >= min_val]
+                except (ValueError, TypeError):
+                    pass
+            if filter_val.get('max') not in (None, '', 'null'):
+                try:
+                    max_val = float(filter_val['max'])
+                    df = df[pd.to_numeric(df[column], errors='coerce') <= max_val]
+                except (ValueError, TypeError):
+                    pass
+        elif isinstance(filter_val, list) and len(filter_val) > 0:
+            # Categorical filter - include rows matching any value
+            df = df[df[column].astype(str).isin([str(v) for v in filter_val])]
+
+    # Apply sort
+    if request.sort and request.sort.get('column'):
+        sort_col = request.sort['column']
+        ascending = request.sort.get('direction', 'asc') == 'asc'
+        if sort_col in df.columns:
+            # Try numeric sort first, fall back to string sort
+            try:
+                df = df.sort_values(by=sort_col, ascending=ascending, na_position='last')
+            except TypeError:
+                df[sort_col] = df[sort_col].astype(str)
+                df = df.sort_values(by=sort_col, ascending=ascending, na_position='last')
+
+    # Cache the processed DataFrame
+    df_state._filtered_df = df
+    df_state.current_filters = request.filters
+    df_state.current_sort = request.sort
+
+    # Return first chunk
+    CHUNK_SIZE = 200
+    first_chunk = df.head(CHUNK_SIZE).to_dict(orient='records')
+
+    return {
+        "data": first_chunk,
+        "totalRows": len(df),
+        "offset": 0,
+        "limit": CHUNK_SIZE,
+        "appliedFilters": request.filters,
+        "appliedSort": request.sort
+    }
+
+
+@app.post("/api/dataframe/clear")
+async def clear_dataframe():
+    """Clear the DataFrame from memory"""
+    df_state.clear()
+    return {"success": True}
 
 
 # Codespace sync endpoints

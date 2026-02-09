@@ -1,13 +1,14 @@
-import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { List } from 'react-window'
 
 const ROW_HEIGHT = 36
+const CHUNK_SIZE = 200
 
 // Row component for react-window v2
-// In v2, rowProps are spread directly onto the component, not passed as `data`
-const VirtualRow = ({ index, style, processedData, columns, columnWidths, isCellSelected, handleCellMouseDown, handleCellMouseEnter }) => {
-  const row = processedData[index]
+const VirtualRow = ({ index, style, rows, columns, columnWidths, isCellSelected, handleCellMouseDown, handleCellMouseEnter }) => {
+  const row = rows[index]
+  if (!row) return null
 
   return (
     <div style={style} className="virtual-row">
@@ -38,18 +39,28 @@ const VirtualRow = ({ index, style, processedData, columns, columnWidths, isCell
 }
 
 const DataFrameViewer = ({ content }) => {
+  // Data state - rows loaded from backend
+  const [rows, setRows] = useState(content.data || [])
+  const [totalRows, setTotalRows] = useState(content.totalRows || content.data?.length || 0)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [loadedUpTo, setLoadedUpTo] = useState(content.data?.length || 0)
+
+  // Filter/sort state
   const [filters, setFilters] = useState({})
   const [activeFilter, setActiveFilter] = useState(null)
   const [filterSearch, setFilterSearch] = useState('')
   const [tempFilter, setTempFilter] = useState({})
   const [dropdownPosition, setDropdownPosition] = useState({ x: 0, y: 0 })
   const [sortConfig, setSortConfig] = useState({ column: null, direction: 'asc' })
+
+  // UI state
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const [selection, setSelection] = useState(null) // { startRow, startCol, endRow, endCol }
+  const [selection, setSelection] = useState(null)
   const [isSelecting, setIsSelecting] = useState(false)
   const [columnWidths, setColumnWidths] = useState({})
   const [resizingColumn, setResizingColumn] = useState(null)
 
+  // Refs
   const dropdownRef = useRef(null)
   const filterButtonRefs = useRef({})
   const tableRef = useRef(null)
@@ -58,8 +69,15 @@ const DataFrameViewer = ({ content }) => {
   const listRef = useRef(null)
   const [containerHeight, setContainerHeight] = useState(400)
 
+  // Get columnInfo from props (computed by backend)
+  const columnInfo = content.columnInfo || {}
+  const filePath = content.filePath
+
   // Reset state when file changes
   useEffect(() => {
+    setRows(content.data || [])
+    setTotalRows(content.totalRows || content.data?.length || 0)
+    setLoadedUpTo(content.data?.length || 0)
     setFilters({})
     setSortConfig({ column: null, direction: 'asc' })
     setSelection(null)
@@ -83,7 +101,6 @@ const DataFrameViewer = ({ content }) => {
     }
     measureHeight()
     window.addEventListener('resize', measureHeight)
-    // Re-measure after a short delay to ensure layout is complete
     const timer = setTimeout(measureHeight, 100)
     return () => {
       window.removeEventListener('resize', measureHeight)
@@ -97,6 +114,57 @@ const DataFrameViewer = ({ content }) => {
       headerRef.current.scrollLeft = e.target.scrollLeft
     }
   }, [])
+
+  // Load more rows when scrolling near bottom
+  const handleItemsRendered = useCallback(async ({ visibleStopIndex }) => {
+    // Check if we need to load more rows
+    if (isLoadingMore || !filePath) return
+    if (loadedUpTo >= totalRows) return
+    if (visibleStopIndex < loadedUpTo - 50) return // Not near bottom yet
+
+    setIsLoadingMore(true)
+    try {
+      const res = await fetch(
+        `/api/dataframe/rows?filePath=${encodeURIComponent(filePath)}&offset=${loadedUpTo}&limit=${CHUNK_SIZE}`
+      )
+      if (res.ok) {
+        const data = await res.json()
+        setRows(prev => [...prev, ...data.data])
+        setLoadedUpTo(prev => prev + data.data.length)
+        setTotalRows(data.totalRows)
+      }
+    } catch (err) {
+      console.error('Failed to load more rows:', err)
+    } finally {
+      setIsLoadingMore(false)
+    }
+  }, [isLoadingMore, filePath, loadedUpTo, totalRows])
+
+  // Apply filter/sort via backend
+  const applyFilterSort = useCallback(async (newFilters, newSort) => {
+    if (!filePath) return
+
+    try {
+      const res = await fetch('/api/dataframe/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filePath,
+          filters: newFilters,
+          sort: newSort.column ? newSort : null
+        })
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        setRows(data.data)
+        setTotalRows(data.totalRows)
+        setLoadedUpTo(data.data.length)
+      }
+    } catch (err) {
+      console.error('Failed to apply filter/sort:', err)
+    }
+  }, [filePath])
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -113,12 +181,10 @@ const DataFrameViewer = ({ content }) => {
   // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Ctrl+C to copy selection
       if ((e.ctrlKey || e.metaKey) && e.key === 'c' && selection) {
         e.preventDefault()
         copySelection()
       }
-      // Escape to exit fullscreen
       if (e.key === 'Escape' && isFullscreen) {
         setIsFullscreen(false)
       }
@@ -127,77 +193,8 @@ const DataFrameViewer = ({ content }) => {
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [selection, isFullscreen])
 
-  // Compute column info from loaded data
-  const columnInfo = useMemo(() => {
-    const info = {}
-    content.columns.forEach(col => {
-      const values = content.data.map(row => row[col])
-      const numericValues = values.filter(v => typeof v === 'number' && !isNaN(v))
-
-      if (numericValues.length > values.length * 0.5) {
-        info[col] = {
-          type: 'numeric',
-          min: Math.min(...numericValues),
-          max: Math.max(...numericValues)
-        }
-      } else {
-        const uniqueValues = [...new Set(values)].filter(v => v !== '' && v != null)
-        info[col] = {
-          type: 'categorical',
-          values: uniqueValues.slice(0, 500)
-        }
-      }
-    })
-    return info
-  }, [content])
-
-  // Filter and sort data
-  const processedData = useMemo(() => {
-    let data = [...content.data]
-
-    // Apply filters
-    Object.entries(filters).forEach(([column, filterVal]) => {
-      if (filterVal === null || filterVal === undefined) return
-
-      if (typeof filterVal === 'object' && !Array.isArray(filterVal)) {
-        if (filterVal.min !== '' && filterVal.min !== null && filterVal.min !== undefined) {
-          data = data.filter(row => row[column] >= Number(filterVal.min))
-        }
-        if (filterVal.max !== '' && filterVal.max !== null && filterVal.max !== undefined) {
-          data = data.filter(row => row[column] <= Number(filterVal.max))
-        }
-      } else if (Array.isArray(filterVal) && filterVal.length > 0) {
-        data = data.filter(row => filterVal.includes(row[column]))
-      }
-    })
-
-    // Apply sorting
-    if (sortConfig.column) {
-      data.sort((a, b) => {
-        const aVal = a[sortConfig.column]
-        const bVal = b[sortConfig.column]
-
-        if (aVal === null || aVal === undefined) return 1
-        if (bVal === null || bVal === undefined) return -1
-
-        if (typeof aVal === 'number' && typeof bVal === 'number') {
-          return sortConfig.direction === 'asc' ? aVal - bVal : bVal - aVal
-        }
-
-        const aStr = String(aVal).toLowerCase()
-        const bStr = String(bVal).toLowerCase()
-        if (sortConfig.direction === 'asc') {
-          return aStr.localeCompare(bStr)
-        }
-        return bStr.localeCompare(aStr)
-      })
-    }
-
-    return data
-  }, [content.data, filters, sortConfig])
-
   // Calculate selection statistics
-  const selectionStats = useMemo(() => {
+  const selectionStats = (() => {
     if (!selection) return null
 
     const { startRow, startCol, endRow, endCol } = selection
@@ -209,8 +206,8 @@ const DataFrameViewer = ({ content }) => {
     const values = []
     for (let r = minRow; r <= maxRow; r++) {
       for (let c = minCol; c <= maxCol; c++) {
-        if (r < processedData.length && c < content.columns.length) {
-          const val = processedData[r][content.columns[c]]
+        if (r < rows.length && c < content.columns.length) {
+          const val = rows[r][content.columns[c]]
           if (typeof val === 'number' && !isNaN(val)) {
             values.push(val)
           }
@@ -237,7 +234,7 @@ const DataFrameViewer = ({ content }) => {
       min: min,
       max: max
     }
-  }, [selection, processedData, content.columns])
+  })()
 
   // Copy selection to clipboard
   const copySelection = useCallback(() => {
@@ -253,29 +250,29 @@ const DataFrameViewer = ({ content }) => {
     for (let r = minRow; r <= maxRow; r++) {
       const cells = []
       for (let c = minCol; c <= maxCol; c++) {
-        if (r < processedData.length && c < content.columns.length) {
-          cells.push(String(processedData[r][content.columns[c]] ?? ''))
+        if (r < rows.length && c < content.columns.length) {
+          cells.push(String(rows[r][content.columns[c]] ?? ''))
         }
       }
       lines.push(cells.join('\t'))
     }
 
     navigator.clipboard.writeText(lines.join('\n'))
-  }, [selection, processedData, content.columns])
+  }, [selection, rows, content.columns])
 
   // Handle column header click for sorting
-  const handleSort = (col) => {
-    setSortConfig(prev => {
-      if (prev.column === col) {
-        return { column: col, direction: prev.direction === 'asc' ? 'desc' : 'asc' }
-      }
-      return { column: col, direction: 'asc' }
-    })
+  const handleSort = async (col) => {
+    const newSort = sortConfig.column === col
+      ? { column: col, direction: sortConfig.direction === 'asc' ? 'desc' : 'asc' }
+      : { column: col, direction: 'asc' }
+
+    setSortConfig(newSort)
+    await applyFilterSort(filters, newSort)
   }
 
   // Cell selection handlers
   const handleCellMouseDown = (rowIdx, colIdx, e) => {
-    if (e.button !== 0) return // Only left click
+    if (e.button !== 0) return
     setSelection({ startRow: rowIdx, startCol: colIdx, endRow: rowIdx, endCol: colIdx })
     setIsSelecting(true)
   }
@@ -346,7 +343,7 @@ const DataFrameViewer = ({ content }) => {
     }
 
     const info = columnInfo[col]
-    if (info.type === 'numeric') {
+    if (info?.type === 'numeric') {
       setTempFilter(filters[col] || { min: '', max: '' })
     } else {
       setTempFilter(filters[col] || [])
@@ -387,11 +384,11 @@ const DataFrameViewer = ({ content }) => {
     }
   }, [activeFilter, dropdownPosition.x, dropdownPosition.y])
 
-  const applyFilter = (col) => {
+  const applyFilter = async (col) => {
     const newFilters = { ...filters }
     const info = columnInfo[col]
 
-    if (info.type === 'numeric') {
+    if (info?.type === 'numeric') {
       if ((tempFilter.min === '' || tempFilter.min === null) &&
           (tempFilter.max === '' || tempFilter.max === null)) {
         delete newFilters[col]
@@ -399,7 +396,7 @@ const DataFrameViewer = ({ content }) => {
         newFilters[col] = tempFilter
       }
     } else {
-      if (tempFilter.length === 0) {
+      if (!tempFilter || tempFilter.length === 0) {
         delete newFilters[col]
       } else {
         newFilters[col] = tempFilter
@@ -409,14 +406,16 @@ const DataFrameViewer = ({ content }) => {
     setFilters(newFilters)
     setActiveFilter(null)
     setFilterSearch('')
+    await applyFilterSort(newFilters, sortConfig)
   }
 
-  const clearFilter = (col) => {
+  const clearFilter = async (col) => {
     const newFilters = { ...filters }
     delete newFilters[col]
     setFilters(newFilters)
     setActiveFilter(null)
     setFilterSearch('')
+    await applyFilterSort(newFilters, sortConfig)
   }
 
   const toggleValue = (value) => {
@@ -434,6 +433,7 @@ const DataFrameViewer = ({ content }) => {
 
   const selectAll = (col) => {
     const info = columnInfo[col]
+    if (!info?.values) return
     const filtered = info.values.filter(v =>
       filterSearch === '' || String(v).toLowerCase().includes(filterSearch.toLowerCase())
     )
@@ -493,12 +493,13 @@ const DataFrameViewer = ({ content }) => {
           </svg>
         </button>
         <span className="toolbar-info">
-          {processedData.length} rows × {content.columns.length} cols
+          {rows.length}{totalRows > rows.length ? ` of ${totalRows}` : ''} rows × {content.columns.length} cols
           {activeFilterCount > 0 && ` • ${activeFilterCount} filter${activeFilterCount > 1 ? 's' : ''}`}
+          {isLoadingMore && ' • Loading...'}
         </span>
       </div>
 
-      {/* Table Header - separate for sticky behavior with virtual scroll */}
+      {/* Table Header */}
       <div className="dataframe-header-container" ref={headerRef}>
         <table className="dataframe-table dataframe-header-table" ref={tableRef}>
           <thead>
@@ -551,18 +552,19 @@ const DataFrameViewer = ({ content }) => {
         <List
           listRef={listRef}
           defaultHeight={containerHeight}
-          rowCount={processedData.length}
+          rowCount={rows.length}
           rowHeight={ROW_HEIGHT}
           overscanCount={10}
           rowComponent={VirtualRow}
           rowProps={{
-            processedData,
+            rows,
             columns: content.columns,
             columnWidths,
             isCellSelected,
             handleCellMouseDown,
             handleCellMouseEnter
           }}
+          onItemsRendered={handleItemsRendered}
           style={{ overflowX: 'auto', height: containerHeight }}
         />
       </div>
@@ -603,7 +605,7 @@ const DataFrameViewer = ({ content }) => {
                   type="number"
                   value={tempFilter.min || ''}
                   onChange={e => setTempFilter(prev => ({ ...prev, min: e.target.value }))}
-                  placeholder={String(columnInfo[activeFilter].min)}
+                  placeholder={String(columnInfo[activeFilter]?.min ?? '')}
                 />
               </div>
               <div className="filter-row">
@@ -612,7 +614,7 @@ const DataFrameViewer = ({ content }) => {
                   type="number"
                   value={tempFilter.max || ''}
                   onChange={e => setTempFilter(prev => ({ ...prev, max: e.target.value }))}
-                  placeholder={String(columnInfo[activeFilter].max)}
+                  placeholder={String(columnInfo[activeFilter]?.max ?? '')}
                 />
               </div>
             </div>
@@ -631,7 +633,7 @@ const DataFrameViewer = ({ content }) => {
               </div>
               <div className="filter-values">
                 {columnInfo[activeFilter]?.values
-                  .filter(v => filterSearch === '' || String(v).toLowerCase().includes(filterSearch.toLowerCase()))
+                  ?.filter(v => filterSearch === '' || String(v).toLowerCase().includes(filterSearch.toLowerCase()))
                   .slice(0, 100)
                   .map((val, idx) => (
                     <label key={idx} className="filter-checkbox">
