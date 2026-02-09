@@ -49,6 +49,8 @@ function App() {
   const pollIntervalRef = useRef(null)
   const suppressAnimationsRef = useRef(false)
   const lastSyncRef = useRef({})
+  const autoPreviewDebounceRef = useRef(null)
+  const isAutoPreviewingRef = useRef(false)
 
   // Sidebar resize handlers - use refs to avoid stale closures
   const isResizingRef = useRef(false)
@@ -198,54 +200,113 @@ function App() {
     }
   }, [projectPath])
 
-  // WebSocket for auto-preview of new output files
+  // WebSocket for auto-preview of new output files (with debouncing + lock)
   useEffect(() => {
     if (!projectPath) return
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const wsUrl = `${protocol}//${window.location.host}/ws/watch`
     let ws = null
+    let pendingFilePath = null // Track the latest file to load
+
+    const loadOutputFile = async (filePath) => {
+      // Skip if already loading
+      if (isAutoPreviewingRef.current) {
+        pendingFilePath = filePath // Queue for later
+        return
+      }
+
+      isAutoPreviewingRef.current = true
+      const fileName = filePath.split('/').pop()
+      setSelectedFile({ name: fileName, path: filePath })
+      setLoading(true)
+
+      try {
+        const res = await fetch(`/api/files/read?path=${encodeURIComponent(filePath)}`)
+        if (res.ok) {
+          const fileData = await res.json()
+          if (fileData.type === 'dataframe') {
+            setFileContent({
+              type: 'dataframe',
+              columns: fileData.columns,
+              columnInfo: fileData.columnInfo,
+              data: fileData.data,
+              filename: fileData.filename,
+              filePath: fileData.filePath,
+              totalRows: fileData.totalRows,
+              offset: fileData.offset,
+              limit: fileData.limit
+            })
+          } else if (fileData.encoding === 'base64') {
+            // Image file
+            const ext = fileName.split('.').pop()?.toLowerCase()
+            setFileContent({
+              type: 'image',
+              content: fileData.content,
+              filename: fileData.filename,
+              extension: ext
+            })
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load output file:', err)
+      } finally {
+        setLoading(false)
+        isAutoPreviewingRef.current = false
+
+        // If another file was queued while loading, load it after a delay
+        if (pendingFilePath && pendingFilePath !== filePath) {
+          const nextFile = pendingFilePath
+          pendingFilePath = null
+          setTimeout(() => loadOutputFile(nextFile), 300)
+        }
+      }
+    }
+
+    // Collect files during debounce window, prioritize images over data files
+    let pendingPreviewFiles = []
+    const imageExts = ['png', 'jpg', 'jpeg', 'gif', 'webp']
+    const dataExts = ['csv', 'xlsx', 'xls']
+    const allPreviewExts = [...imageExts, ...dataExts]
+
+    const pickBestFile = (files) => {
+      // Prioritize images over data files
+      const images = files.filter(f => {
+        const ext = f.split('.').pop()?.toLowerCase()
+        return imageExts.includes(ext)
+      })
+      if (images.length > 0) return images[images.length - 1] // Latest image
+      return files[files.length - 1] // Latest file
+    }
 
     const connect = () => {
       ws = new WebSocket(wsUrl)
 
-      ws.onmessage = async (event) => {
+      ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data)
           if (data.type === 'output_file_change' && data.path) {
-            // Auto-select the new/modified output file for preview
             const filePath = data.path
             const fileName = filePath.split('/').pop()
 
-            // Only auto-preview data files (csv, xlsx, etc.)
+            // Auto-preview data files and images
             const ext = fileName.split('.').pop()?.toLowerCase()
-            if (['csv', 'xlsx', 'xls'].includes(ext)) {
-              setSelectedFile({ name: fileName, path: filePath })
-              setLoading(true)
-
-              try {
-                const res = await fetch(`/api/files/read?path=${encodeURIComponent(filePath)}`)
-                if (res.ok) {
-                  const fileData = await res.json()
-                  if (fileData.type === 'dataframe') {
-                    setFileContent({
-                      type: 'dataframe',
-                      columns: fileData.columns,
-                      columnInfo: fileData.columnInfo,
-                      data: fileData.data,
-                      filename: fileData.filename,
-                      filePath: fileData.filePath,
-                      totalRows: fileData.totalRows,
-                      offset: fileData.offset,
-                      limit: fileData.limit
-                    })
-                  }
-                }
-              } catch (err) {
-                console.error('Failed to load output file:', err)
-              } finally {
-                setLoading(false)
+            if (allPreviewExts.includes(ext)) {
+              // Add to pending files
+              if (!pendingPreviewFiles.includes(filePath)) {
+                pendingPreviewFiles.push(filePath)
               }
+
+              // Debounce: wait for all files, then pick the best one
+              if (autoPreviewDebounceRef.current) {
+                clearTimeout(autoPreviewDebounceRef.current)
+              }
+              autoPreviewDebounceRef.current = setTimeout(() => {
+                autoPreviewDebounceRef.current = null
+                const bestFile = pickBestFile(pendingPreviewFiles)
+                pendingPreviewFiles = []
+                loadOutputFile(bestFile)
+              }, 1000) // Wait 1 second for things to settle
             }
           }
         } catch (e) {
@@ -263,6 +324,9 @@ function App() {
 
     return () => {
       if (ws) ws.close()
+      if (autoPreviewDebounceRef.current) {
+        clearTimeout(autoPreviewDebounceRef.current)
+      }
     }
   }, [projectPath])
 

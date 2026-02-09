@@ -40,7 +40,18 @@ When a user asks for a graph or visualization, create a Python script that outpu
 1. **A PNG image** of the graph saved to `output_folder/`
 2. **A CSV file** with the underlying data that supports the graph
 
-Example graph script:
+### CRITICAL: Preventing Labels from Getting Cut Off
+
+**ALWAYS follow these rules to ensure labels are fully visible:**
+
+1. **Use `bbox_inches='tight'`** in `savefig()` - This automatically expands the saved image to include all labels
+2. **Use `plt.tight_layout()`** before saving - Adjusts subplot params to fit the figure
+3. **Add padding with `pad_inches`** - Extra margin around the figure
+4. **Rotate long x-axis labels** - Use `plt.xticks(rotation=45, ha='right')` for long category names
+5. **Use adequate figure size** - `figsize=(12, 8)` or larger for complex charts
+
+### Graph Template (Use This Exactly)
+
 ```python
 import os
 import pandas as pd
@@ -58,18 +69,59 @@ chart_data = df.groupby("category")["value"].sum().reset_index()
 # Save the underlying data as CSV
 chart_data.to_csv(os.path.join(OUTPUT_FOLDER, "chart_data.csv"), index=False)
 
-# Create and save the graph as PNG
-plt.figure(figsize=(10, 6))
-plt.bar(chart_data["category"], chart_data["value"])
-plt.title("Your Chart Title")
-plt.xlabel("Category")
-plt.ylabel("Value")
+# Create figure with good size
+fig, ax = plt.subplots(figsize=(12, 8))
+
+# Create the chart
+ax.bar(chart_data["category"], chart_data["value"])
+
+# Add labels and title
+ax.set_title("Your Chart Title", fontsize=14, fontweight='bold', pad=20)
+ax.set_xlabel("Category", fontsize=12)
+ax.set_ylabel("Value", fontsize=12)
+
+# Rotate x-axis labels if they're long (IMPORTANT for readability)
+plt.xticks(rotation=45, ha='right')
+
+# Ensure everything fits - BOTH of these are important
 plt.tight_layout()
-plt.savefig(os.path.join(OUTPUT_FOLDER, "chart.png"), dpi=150)
+
+# Save with bbox_inches='tight' to prevent ANY label cutoff
+plt.savefig(
+    os.path.join(OUTPUT_FOLDER, "chart.png"),
+    dpi=150,
+    bbox_inches='tight',  # CRITICAL: expands image to fit all labels
+    pad_inches=0.3,       # Extra padding around edges
+    facecolor='white'     # White background
+)
 plt.close()
 
 print(f"Saved chart to {os.path.join(OUTPUT_FOLDER, 'chart.png')}")
 print(f"Saved data to {os.path.join(OUTPUT_FOLDER, 'chart_data.csv')}")
+```
+
+### Common Graph Types
+
+**Line Chart:**
+```python
+ax.plot(x_data, y_data, marker='o', linewidth=2)
+```
+
+**Bar Chart:**
+```python
+ax.bar(categories, values)
+# For horizontal: ax.barh(categories, values)
+```
+
+**Pie Chart:**
+```python
+ax.pie(values, labels=labels, autopct='%1.1f%%')
+ax.axis('equal')  # Equal aspect ratio for circular pie
+```
+
+**Scatter Plot:**
+```python
+ax.scatter(x_data, y_data, alpha=0.6)
 ```
 
 ## Folder Structure

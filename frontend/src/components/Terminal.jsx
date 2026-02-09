@@ -96,6 +96,8 @@ function Terminal({ syncUrl, isConnected, autoLaunchClaude = false }) {
     }
 
     ws.onmessage = (event) => {
+      // Skip pong messages from keepalive
+      if (event.data === '{"type":"pong"}') return
       xterm.write(event.data)
     }
 

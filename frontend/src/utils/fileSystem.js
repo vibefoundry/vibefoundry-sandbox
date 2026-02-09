@@ -18,6 +18,7 @@ export function getFileType(filename) {
   if (['.py', '.js', '.jsx', '.ts', '.tsx', '.html', '.css', '.sql', '.sh', '.yaml', '.yml'].includes(ext)) return 'code'
   if (ext === '.md') return 'markdown'
   if (['.txt', '.log'].includes(ext)) return 'text'
+  if (['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.ico'].includes(ext)) return 'image'
   if (['.parquet'].includes(ext)) return 'unsupported'
 
   return 'text'

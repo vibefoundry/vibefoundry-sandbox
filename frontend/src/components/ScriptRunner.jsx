@@ -12,13 +12,19 @@ function ScriptRunner({ folderName, height }) {
   const [selectedScripts, setSelectedScripts] = useState(new Set())
   const [isRunning, setIsRunning] = useState(false)
   const [output, setOutput] = useState([])
-  const [autoRun, setAutoRun] = useState(true)
+  const [pendingScripts, setPendingScripts] = useState([]) // Scripts awaiting approval
+  const [showPendingModal, setShowPendingModal] = useState(false)
+  const [checkedPendingScripts, setCheckedPendingScripts] = useState(new Set()) // Which pending scripts are checked
   const [collapsed, setCollapsed] = useState(false)
   const [scriptsWidth, setScriptsWidth] = useState(200)
   const [isResizingScripts, setIsResizingScripts] = useState(false)
+  const [installModal, setInstallModal] = useState({ show: false, module: null, scriptPath: null })
+  const [isInstalling, setIsInstalling] = useState(false)
   const outputRef = useRef(null)
   const wsRef = useRef(null)
   const scriptsResizeRef = useRef(null)
+  const scriptQueueRef = useRef([])
+  const isRunningRef = useRef(false)
 
   // Fetch scripts list
   const fetchScripts = useCallback(async () => {
@@ -61,12 +67,18 @@ function ScriptRunner({ folderName, height }) {
             // Refresh scripts list
             fetchScripts()
 
-            // Auto-run the modified script if enabled
-            if (autoRun) {
-              const scriptPath = data.path
-              addOutput(`Script modified: ${scriptPath.split('/').pop()}`, 'info')
-              runScripts([scriptPath])
-            }
+            // Add to pending scripts modal (avoid duplicates, auto-check new scripts)
+            const scriptPath = data.path
+            setPendingScripts(prev => {
+              if (prev.includes(scriptPath)) return prev
+              return [...prev, scriptPath]
+            })
+            setCheckedPendingScripts(prev => {
+              const next = new Set(prev)
+              next.add(scriptPath)
+              return next
+            })
+            setShowPendingModal(true)
           } else if (data.type === 'data_change') {
             addOutput('Data files changed - metadata updated', 'info')
           }
@@ -90,7 +102,7 @@ function ScriptRunner({ folderName, height }) {
         wsRef.current.close()
       }
     }
-  }, [folderName, autoRun])
+  }, [folderName])
 
   // Auto-scroll output
   useEffect(() => {
@@ -101,6 +113,66 @@ function ScriptRunner({ folderName, height }) {
 
   const addOutput = (message, type = 'log') => {
     setOutput(prev => [...prev, { message, type, timestamp: new Date() }])
+  }
+
+  // Detect ModuleNotFoundError and extract module name
+  const detectMissingModule = (stderr) => {
+    if (!stderr) return null
+    const match = stderr.match(/ModuleNotFoundError: No module named ['\"]([^'\"]+)['\"]/)
+    if (match) {
+      // Handle submodule imports like 'PIL.Image' -> 'PIL' (which is 'pillow')
+      const moduleName = match[1].split('.')[0]
+      // Map common module names to pip package names
+      const moduleMap = {
+        'PIL': 'pillow',
+        'cv2': 'opencv-python',
+        'sklearn': 'scikit-learn',
+        'yaml': 'pyyaml',
+      }
+      return moduleMap[moduleName] || moduleName
+    }
+    return null
+  }
+
+  // Handle pip install
+  const handleInstallModule = async () => {
+    const { module, scriptPath } = installModal
+    setIsInstalling(true)
+    addOutput(`📦 Installing ${module}...`, 'info')
+
+    try {
+      const res = await fetch('/api/pip/install', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ package: module })
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        if (data.success) {
+          addOutput(`✓ Successfully installed ${module}`, 'success')
+          if (data.stdout) addOutput(data.stdout.trim(), 'stdout')
+
+          // Close modal and re-run the script
+          setInstallModal({ show: false, module: null, scriptPath: null })
+          setIsInstalling(false)
+
+          // Re-run the script
+          addOutput(`🔄 Re-running script...`, 'info')
+          await runScripts([scriptPath])
+        } else {
+          addOutput(`✗ Failed to install ${module}`, 'error')
+          if (data.stderr) addOutput(data.stderr.trim(), 'stderr')
+          setIsInstalling(false)
+        }
+      } else {
+        addOutput(`✗ Failed to install ${module}`, 'error')
+        setIsInstalling(false)
+      }
+    } catch (err) {
+      addOutput(`Error: ${err.message}`, 'error')
+      setIsInstalling(false)
+    }
   }
 
   const toggleScript = (scriptPath) => {
@@ -123,53 +195,86 @@ function ScriptRunner({ folderName, height }) {
     setSelectedScripts(new Set())
   }
 
-  const runScripts = async (scriptPaths) => {
-    if (scriptPaths.length === 0) return
-
-    setIsRunning(true)
-    addOutput('─'.repeat(40), 'divider')
-
-    for (const scriptPath of scriptPaths) {
-      const scriptName = scriptPath.split('/').pop()
-      addOutput(`▶ Running: ${scriptName}`, 'header')
-
-      try {
-        const res = await fetch('/api/scripts/run', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ scripts: [scriptPath] })
-        })
-
-        if (res.ok) {
-          const data = await res.json()
-          const result = data.results[0]
-
-          if (result.stdout) {
-            addOutput(result.stdout.trim(), 'stdout')
-          }
-          if (result.stderr) {
-            addOutput(result.stderr.trim(), 'stderr')
-          }
-          if (result.error) {
-            addOutput(result.error, 'error')
-          }
-
-          if (result.success) {
-            addOutput(`✓ ${scriptName} completed`, 'success')
-          } else if (result.timed_out) {
-            addOutput(`⏱ ${scriptName} timed out`, 'error')
-          } else {
-            addOutput(`✗ ${scriptName} failed (code ${result.return_code})`, 'error')
-          }
-        } else {
-          addOutput(`Failed to run ${scriptName}`, 'error')
-        }
-      } catch (err) {
-        addOutput(`Error: ${err.message}`, 'error')
+  // Queue scripts to run (prevents concurrent runs)
+  const queueScripts = (scriptPaths) => {
+    // Add to queue (avoid duplicates)
+    for (const path of scriptPaths) {
+      if (!scriptQueueRef.current.includes(path)) {
+        scriptQueueRef.current.push(path)
       }
     }
+    // Start processing if not already running
+    processQueue()
+  }
 
+  // Process the script queue one at a time
+  const processQueue = async () => {
+    if (isRunningRef.current || scriptQueueRef.current.length === 0) return
+
+    isRunningRef.current = true
+    setIsRunning(true)
+
+    while (scriptQueueRef.current.length > 0) {
+      const scriptPath = scriptQueueRef.current.shift()
+      await runSingleScript(scriptPath)
+    }
+
+    isRunningRef.current = false
     setIsRunning(false)
+  }
+
+  // Run a single script
+  const runSingleScript = async (scriptPath) => {
+    const scriptName = scriptPath.split('/').pop()
+    addOutput('─'.repeat(40), 'divider')
+    addOutput(`▶ Running: ${scriptName}`, 'header')
+
+    try {
+      const res = await fetch('/api/scripts/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scripts: [scriptPath] })
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        const result = data.results[0]
+
+        if (result.stdout) {
+          addOutput(result.stdout.trim(), 'stdout')
+        }
+        if (result.stderr) {
+          addOutput(result.stderr.trim(), 'stderr')
+        }
+        if (result.error) {
+          addOutput(result.error, 'error')
+        }
+
+        if (result.success) {
+          addOutput(`✓ ${scriptName} completed`, 'success')
+        } else if (result.timed_out) {
+          addOutput(`⏱ ${scriptName} timed out`, 'error')
+        } else {
+          addOutput(`✗ ${scriptName} failed (code ${result.return_code})`, 'error')
+
+          // Check for missing module error
+          const missingModule = detectMissingModule(result.stderr)
+          if (missingModule) {
+            setInstallModal({ show: true, module: missingModule, scriptPath })
+          }
+        }
+      } else {
+        addOutput(`Failed to run ${scriptName}`, 'error')
+      }
+    } catch (err) {
+      addOutput(`Error: ${err.message}`, 'error')
+    }
+  }
+
+  // Run multiple scripts (used by manual Run button)
+  const runScripts = async (scriptPaths) => {
+    if (scriptPaths.length === 0) return
+    queueScripts(scriptPaths)
   }
 
   const handleRun = () => {
@@ -194,6 +299,46 @@ function ScriptRunner({ folderName, height }) {
 
   const clearOutput = () => {
     setOutput([])
+  }
+
+  // Approve and run checked pending scripts
+  const handleApprovePending = () => {
+    const scriptsToRun = pendingScripts.filter(p => checkedPendingScripts.has(p))
+    if (scriptsToRun.length > 0) {
+      queueScripts(scriptsToRun)
+    }
+    setPendingScripts([])
+    setCheckedPendingScripts(new Set())
+    setShowPendingModal(false)
+  }
+
+  // Dismiss pending scripts
+  const handleDismissPending = () => {
+    setPendingScripts([])
+    setCheckedPendingScripts(new Set())
+    setShowPendingModal(false)
+  }
+
+  // Toggle a pending script checkbox
+  const togglePendingScript = (scriptPath) => {
+    setCheckedPendingScripts(prev => {
+      const next = new Set(prev)
+      if (next.has(scriptPath)) {
+        next.delete(scriptPath)
+      } else {
+        next.add(scriptPath)
+      }
+      return next
+    })
+  }
+
+  // Select/deselect all pending scripts
+  const toggleAllPendingScripts = () => {
+    if (checkedPendingScripts.size === pendingScripts.length) {
+      setCheckedPendingScripts(new Set())
+    } else {
+      setCheckedPendingScripts(new Set(pendingScripts))
+    }
   }
 
   const addTerminal = () => {
@@ -281,14 +426,6 @@ function ScriptRunner({ folderName, height }) {
         </div>
         {activeTab === 'scripts' && (
           <div className="script-runner-header-actions" onClick={(e) => e.stopPropagation()}>
-            <label className="auto-run-label">
-              <input
-                type="checkbox"
-                checked={autoRun}
-                onChange={(e) => setAutoRun(e.target.checked)}
-              />
-              Auto
-            </label>
             <button
               className="btn-header"
               onClick={handleRun}
@@ -386,6 +523,81 @@ function ScriptRunner({ folderName, height }) {
                 <LocalTerminal id={term.id} />
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Missing Module Install Modal */}
+      {installModal.show && (
+        <div className="install-modal-overlay" onClick={() => !isInstalling && setInstallModal({ show: false, module: null, scriptPath: null })}>
+          <div className="install-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="install-modal-icon">📦</div>
+            <h3>Missing Module</h3>
+            <p>
+              The module <code>{installModal.module}</code> is not installed.
+            </p>
+            <p>Would you like to install it?</p>
+            <div className="install-modal-actions">
+              <button
+                className="btn-install"
+                onClick={handleInstallModule}
+                disabled={isInstalling}
+              >
+                {isInstalling ? 'Installing...' : `pip install ${installModal.module}`}
+              </button>
+              <button
+                className="btn-cancel"
+                onClick={() => setInstallModal({ show: false, module: null, scriptPath: null })}
+                disabled={isInstalling}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pending Scripts Modal */}
+      {showPendingModal && pendingScripts.length > 0 && (
+        <div className="pending-modal-overlay" onClick={handleDismissPending}>
+          <div className="pending-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="pending-modal-icon">📝</div>
+            <h3>Scripts Modified</h3>
+            <div className="pending-scripts-list">
+              <label className="pending-script-item select-all">
+                <input
+                  type="checkbox"
+                  checked={checkedPendingScripts.size === pendingScripts.length}
+                  onChange={toggleAllPendingScripts}
+                />
+                <span>Select All</span>
+              </label>
+              {pendingScripts.map((scriptPath, i) => (
+                <label key={i} className="pending-script-item">
+                  <input
+                    type="checkbox"
+                    checked={checkedPendingScripts.has(scriptPath)}
+                    onChange={() => togglePendingScript(scriptPath)}
+                  />
+                  <span>{scriptPath.split('/').pop()}</span>
+                </label>
+              ))}
+            </div>
+            <div className="pending-modal-actions">
+              <button
+                className="btn-run-pending"
+                onClick={handleApprovePending}
+                disabled={isRunning || checkedPendingScripts.size === 0}
+              >
+                {isRunning ? 'Running...' : `Run ${checkedPendingScripts.size} Script${checkedPendingScripts.size !== 1 ? 's' : ''}`}
+              </button>
+              <button
+                className="btn-dismiss"
+                onClick={handleDismissPending}
+              >
+                Dismiss
+              </button>
+            </div>
           </div>
         </div>
       )}

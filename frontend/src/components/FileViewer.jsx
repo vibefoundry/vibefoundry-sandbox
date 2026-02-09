@@ -10,6 +10,16 @@ const FileViewer = ({ content, canWrite, onSave, saveStatus }) => {
     switch (content.type) {
       case 'dataframe':
         return <DataFrameViewer content={content} />
+      case 'image':
+        const ext = (content.extension || 'png').replace(/^\./, '') // Remove leading dot if present
+        return (
+          <div className="image-viewer">
+            <img
+              src={`data:image/${ext};base64,${content.content}`}
+              alt={content.filename}
+            />
+          </div>
+        )
       case 'json':
         return <JsonViewer content={content} />
       case 'code':

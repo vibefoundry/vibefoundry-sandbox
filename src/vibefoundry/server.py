@@ -252,6 +252,49 @@ async def regenerate_metadata():
     }
 
 
+class PipInstallRequest(BaseModel):
+    package: str
+
+
+@app.post("/api/pip/install")
+async def pip_install(request: PipInstallRequest):
+    """Install a Python package using pip"""
+    import subprocess
+    import sys
+
+    # Sanitize package name - only allow alphanumeric, hyphens, underscores, brackets
+    package = request.package.strip()
+    if not package or not all(c.isalnum() or c in '-_[],' for c in package):
+        raise HTTPException(status_code=400, detail="Invalid package name")
+
+    try:
+        # Run pip install
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", package],
+            capture_output=True,
+            text=True,
+            timeout=120  # 2 minute timeout
+        )
+
+        return {
+            "success": result.returncode == 0,
+            "package": package,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "return_code": result.returncode
+        }
+    except subprocess.TimeoutExpired:
+        return {
+            "success": False,
+            "package": package,
+            "stdout": "",
+            "stderr": "Installation timed out",
+            "return_code": -1
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to install package: {str(e)}")
+
+
 @app.get("/api/watch/check")
 async def check_for_changes():
     """Manually check for file changes"""

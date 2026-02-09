@@ -1095,6 +1095,25 @@ body {
   background: var(--color-bg);
 }
 
+/* Image viewer */
+.image-viewer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 20px;
+  overflow: auto;
+  background: var(--color-bg-subtle);
+}
+
+.image-viewer img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
 /* Unknown file type */
 .unknown-viewer {
   display: flex;
