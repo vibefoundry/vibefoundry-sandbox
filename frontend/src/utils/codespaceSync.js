@@ -22,18 +22,37 @@ function shouldBlockSync(filename) {
 }
 
 /**
- * Write time_keeper.txt to codespace to keep it alive
+ * Write time_keeper.txt to codespace to keep it alive (appends new lines)
  */
 export async function writeTimeKeeper(baseUrl) {
   try {
     const timestamp = new Date().toISOString()
+
+    // Read existing content first
+    let existingContent = ""
+    try {
+      const readResponse = await fetch(`${baseUrl}/scripts/time_keeper.txt`, {
+        method: "GET",
+        mode: "cors"
+      })
+      if (readResponse.ok) {
+        const data = await readResponse.json()
+        existingContent = data.content || ""
+      }
+    } catch (e) {
+      // File doesn't exist yet, that's fine
+    }
+
+    // Append new timestamp
+    const newContent = existingContent + `Ping: ${timestamp}\n`
+
     const response = await fetch(`${baseUrl}/scripts/time_keeper.txt`, {
       method: "POST",
       mode: "cors",
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ content: `Last ping: ${timestamp}\n` })
+      body: JSON.stringify({ content: newContent })
     })
     return response.ok
   } catch (err) {
