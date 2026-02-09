@@ -69,6 +69,7 @@ const DataFrameViewer = ({ content }) => {
   // Get columnInfo from props (computed by backend)
   const columnInfo = content.columnInfo || {}
   const columns = content.columns || []
+  const filePath = content.filePath || ''
 
   // Reset state when file changes
   useEffect(() => {
@@ -108,14 +109,14 @@ const DataFrameViewer = ({ content }) => {
   // Load more rows when scrolling near bottom
   const handleRowsRendered = useCallback(async (visibleRows) => {
     const { stopIndex } = visibleRows
-    if (isLoadingMore) return
+    if (isLoadingMore || !filePath) return
     if (loadedUpTo >= totalRows) return
     if (stopIndex < loadedUpTo - 50) return
 
     setIsLoadingMore(true)
     try {
       const res = await fetch(
-        `/api/dataframe/rows?offset=${loadedUpTo}&limit=${CHUNK_SIZE}`
+        `/api/dataframe/rows?filePath=${encodeURIComponent(filePath)}&offset=${loadedUpTo}&limit=${CHUNK_SIZE}`
       )
       if (res.ok) {
         const data = await res.json()
@@ -130,15 +131,18 @@ const DataFrameViewer = ({ content }) => {
     } finally {
       setIsLoadingMore(false)
     }
-  }, [isLoadingMore, loadedUpTo, totalRows])
+  }, [isLoadingMore, loadedUpTo, totalRows, filePath])
 
   // Apply filter/sort via backend
   const applyFilterSort = useCallback(async (newFilters, newSort) => {
+    if (!filePath) return
+
     try {
       const res = await fetch('/api/dataframe/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          filePath,
           filters: newFilters,
           sort: newSort.column ? newSort : null
         })
@@ -156,7 +160,7 @@ const DataFrameViewer = ({ content }) => {
     } catch (err) {
       console.error('Failed to apply filter/sort:', err)
     }
-  }, [])
+  }, [filePath])
 
   // Close dropdown when clicking outside
   useEffect(() => {
