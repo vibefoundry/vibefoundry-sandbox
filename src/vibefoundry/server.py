@@ -164,7 +164,7 @@ async def select_folder(request: FolderSelectRequest):
         on_data_change=lambda: asyncio.create_task(notify_data_change()),
         on_script_change=lambda p: asyncio.create_task(notify_script_change(p))
     )
-    state.watcher.scan_initial_state()
+    await state.watcher.start_async()
 
     # Generate initial metadata
     generate_metadata(folder_path)
