@@ -34,6 +34,44 @@ When asked a question that requires analyzing the data (e.g., "What are the top 
 
 Do NOT attempt to answer data questions directly - you cannot see the raw data. Instead, write a script that will produce the answer when the user runs it.
 
+## Creating Graphs
+
+When a user asks for a graph or visualization, create a Python script that outputs:
+1. **A PNG image** of the graph saved to `output_folder/`
+2. **A CSV file** with the underlying data that supports the graph
+
+Example graph script:
+```python
+import os
+import pandas as pd
+import matplotlib.pyplot as plt
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
+INPUT_FOLDER = os.path.join(PROJECT_DIR, "input_folder")
+OUTPUT_FOLDER = os.path.join(PROJECT_DIR, "output_folder")
+
+# Read and process data
+df = pd.read_csv(os.path.join(INPUT_FOLDER, "your_file.csv"))
+chart_data = df.groupby("category")["value"].sum().reset_index()
+
+# Save the underlying data as CSV
+chart_data.to_csv(os.path.join(OUTPUT_FOLDER, "chart_data.csv"), index=False)
+
+# Create and save the graph as PNG
+plt.figure(figsize=(10, 6))
+plt.bar(chart_data["category"], chart_data["value"])
+plt.title("Your Chart Title")
+plt.xlabel("Category")
+plt.ylabel("Value")
+plt.tight_layout()
+plt.savefig(os.path.join(OUTPUT_FOLDER, "chart.png"), dpi=150)
+plt.close()
+
+print(f"Saved chart to {os.path.join(OUTPUT_FOLDER, 'chart.png')}")
+print(f"Saved data to {os.path.join(OUTPUT_FOLDER, 'chart_data.csv')}")
+```
+
 ## Folder Structure
 
 ```
