@@ -497,28 +497,26 @@ function App() {
               {showPreview ? '' : (selectedFile?.name || 'No file selected')}
             </span>
           </div>
-          {syncConnection.syncUrl && (
-            <div className="top-bar-section top-bar-right">
-              <span className="top-bar-title">Terminal</span>
+          <div className="top-bar-section top-bar-right">
+            <span className="top-bar-title">Terminal</span>
+            <button
+              className="btn-flat"
+              onClick={() => setTerminalCollapsed(!terminalCollapsed)}
+            >
+              {terminalCollapsed ? 'Expand' : 'Collapse'}
+            </button>
+            {showTerminal && !terminalCollapsed && syncConnection.syncUrl && (
               <button
                 className="btn-flat"
-                onClick={() => setTerminalCollapsed(!terminalCollapsed)}
+                onClick={() => {
+                  setShowTerminal(false)
+                  setTimeout(() => setShowTerminal(true), 100)
+                }}
               >
-                {terminalCollapsed ? 'Expand' : 'Collapse'}
+                Relaunch
               </button>
-              {showTerminal && !terminalCollapsed && (
-                <button
-                  className="btn-flat"
-                  onClick={() => {
-                    setShowTerminal(false)
-                    setTimeout(() => setShowTerminal(true), 100)
-                  }}
-                >
-                  Relaunch
-                </button>
-              )}
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
 
@@ -696,9 +694,9 @@ function App() {
         </div>
 
         {/* Terminal Pane */}
-        {syncConnection.syncUrl && !terminalCollapsed && (
+        {!terminalCollapsed && (
           <div className="terminal-pane">
-            {showTerminal ? (
+            {showTerminal && syncConnection.syncUrl ? (
               <Terminal
                 syncUrl={syncConnection.syncUrl}
                 isConnected={syncConnection.isConnected}
@@ -706,13 +704,19 @@ function App() {
               />
             ) : (
               <div className="terminal-launch-screen">
-                <button
-                  className="btn-launch-claude"
-                  onClick={() => setShowTerminal(true)}
-                  disabled={!syncConnection.isConnected}
-                >
-                  Launch Claude Code in Virtual Sandbox
-                </button>
+                {syncConnection.syncUrl ? (
+                  <button
+                    className="btn-launch-claude"
+                    onClick={() => setShowTerminal(true)}
+                    disabled={!syncConnection.isConnected}
+                  >
+                    Launch Claude Code in Virtual Sandbox
+                  </button>
+                ) : (
+                  <span className="terminal-launch-message">
+                    Choose a Code Space to Launch Claude Code
+                  </span>
+                )}
               </div>
             )}
           </div>
