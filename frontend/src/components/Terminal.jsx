@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Terminal as XTerm } from '@xterm/xterm'
+import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 
 // Fixed terminal size - wider and taller for better Claude Code experience
@@ -29,9 +30,11 @@ function Terminal({ syncUrl, isConnected, alwaysExpanded = false }) {
       cursorStyle: 'block',
       fontSize: 14,
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-      scrollback: 5000,
+      scrollback: 2000,
       cols: FIXED_COLS,
       rows: FIXED_ROWS,
+      smoothScrollDuration: 100,
+      scrollSensitivity: 1,
       theme: {
         background: '#ffffff',
         foreground: '#1e1e1e',
@@ -57,6 +60,15 @@ function Terminal({ syncUrl, isConnected, alwaysExpanded = false }) {
     })
 
     xterm.open(terminalRef.current)
+
+    // Load WebGL addon for GPU-accelerated rendering
+    try {
+      const webglAddon = new WebglAddon()
+      xterm.loadAddon(webglAddon)
+    } catch (e) {
+      console.warn('WebGL addon failed to load, using default renderer:', e)
+    }
+
     xtermRef.current = xterm
 
     return () => {
@@ -150,7 +162,6 @@ function Terminal({ syncUrl, isConnected, alwaysExpanded = false }) {
     return (
       <div className="terminal-container expanded">
         <div className="terminal-body" ref={terminalRef}></div>
-        <div className="terminal-end-line"></div>
       </div>
     )
   }
