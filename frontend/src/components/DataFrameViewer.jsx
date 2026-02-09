@@ -1,42 +1,41 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, memo } from 'react'
 import { createPortal } from 'react-dom'
 import { List } from 'react-window'
 
-const ROW_HEIGHT = 36
+const ROW_HEIGHT = 32
 const CHUNK_SIZE = 200
+const DEFAULT_COL_WIDTH = 120
+const ROW_NUM_WIDTH = 50
 
-// Row component for react-window v2
-const VirtualRow = ({ index, style, rows, columns, columnWidths, isCellSelected, handleCellMouseDown, handleCellMouseEnter }) => {
+// Memoized row component for react-window v2
+const VirtualRow = memo(({ index, style, rows, columns, columnWidths, getColWidth, isCellSelected, handleCellMouseDown, handleCellMouseEnter }) => {
   const row = rows[index]
-  if (!row) return null
+  if (!row) return <div style={style} />
 
   return (
-    <div style={style} className="virtual-row">
-      <table className="dataframe-table dataframe-body-table">
-        <tbody>
-          <tr>
-            <td className="row-number">{index + 1}</td>
-            {columns.map((col, colIdx) => {
-              const width = columnWidths[col]
-              return (
-                <td
-                  key={col}
-                  className={isCellSelected(index, colIdx) ? 'selected' : ''}
-                  onMouseDown={(e) => handleCellMouseDown(index, colIdx, e)}
-                  onMouseEnter={() => handleCellMouseEnter(index, colIdx)}
-                  title={String(row[col] ?? '')}
-                  style={width ? { width: width, minWidth: width } : undefined}
-                >
-                  {String(row[col] ?? '')}
-                </td>
-              )
-            })}
-          </tr>
-        </tbody>
-      </table>
+    <div style={{ ...style, display: 'flex' }} className="df-row">
+      <div className="df-cell df-row-num" style={{ width: ROW_NUM_WIDTH, minWidth: ROW_NUM_WIDTH }}>
+        {index + 1}
+      </div>
+      {columns.map((col, colIdx) => {
+        const width = getColWidth(col)
+        const selected = isCellSelected(index, colIdx)
+        return (
+          <div
+            key={col}
+            className={`df-cell ${selected ? 'selected' : ''}`}
+            style={{ width, minWidth: width }}
+            onMouseDown={(e) => handleCellMouseDown(index, colIdx, e)}
+            onMouseEnter={() => handleCellMouseEnter(index, colIdx)}
+            title={String(row[col] ?? '')}
+          >
+            {String(row[col] ?? '')}
+          </div>
+        )
+      })}
     </div>
   )
-}
+})
 
 const DataFrameViewer = ({ content }) => {
   // Data state - rows loaded from backend
@@ -58,12 +57,10 @@ const DataFrameViewer = ({ content }) => {
   const [selection, setSelection] = useState(null)
   const [isSelecting, setIsSelecting] = useState(false)
   const [columnWidths, setColumnWidths] = useState({})
-  const [resizingColumn, setResizingColumn] = useState(null)
 
   // Refs
   const dropdownRef = useRef(null)
   const filterButtonRefs = useRef({})
-  const tableRef = useRef(null)
   const containerRef = useRef(null)
   const headerRef = useRef(null)
   const listRef = useRef(null)
@@ -71,7 +68,7 @@ const DataFrameViewer = ({ content }) => {
 
   // Get columnInfo from props (computed by backend)
   const columnInfo = content.columnInfo || {}
-  const filePath = content.filePath
+  const columns = content.columns || []
 
   // Reset state when file changes
   useEffect(() => {
@@ -108,48 +105,40 @@ const DataFrameViewer = ({ content }) => {
     }
   }, [isFullscreen])
 
-  // Sync horizontal scroll between header and body
-  const handleBodyScroll = useCallback((e) => {
-    if (headerRef.current) {
-      headerRef.current.scrollLeft = e.target.scrollLeft
-    }
-  }, [])
-
   // Load more rows when scrolling near bottom
-  const handleItemsRendered = useCallback(async ({ visibleStopIndex }) => {
-    // Check if we need to load more rows
-    if (isLoadingMore || !filePath) return
+  const handleRowsRendered = useCallback(async (visibleRows) => {
+    const { stopIndex } = visibleRows
+    if (isLoadingMore) return
     if (loadedUpTo >= totalRows) return
-    if (visibleStopIndex < loadedUpTo - 50) return // Not near bottom yet
+    if (stopIndex < loadedUpTo - 50) return
 
     setIsLoadingMore(true)
     try {
       const res = await fetch(
-        `/api/dataframe/rows?filePath=${encodeURIComponent(filePath)}&offset=${loadedUpTo}&limit=${CHUNK_SIZE}`
+        `/api/dataframe/rows?offset=${loadedUpTo}&limit=${CHUNK_SIZE}`
       )
       if (res.ok) {
         const data = await res.json()
-        setRows(prev => [...prev, ...data.data])
-        setLoadedUpTo(prev => prev + data.data.length)
-        setTotalRows(data.totalRows)
+        if (data.data && data.data.length > 0) {
+          setRows(prev => [...prev, ...data.data])
+          setLoadedUpTo(prev => prev + data.data.length)
+          setTotalRows(data.totalRows)
+        }
       }
     } catch (err) {
       console.error('Failed to load more rows:', err)
     } finally {
       setIsLoadingMore(false)
     }
-  }, [isLoadingMore, filePath, loadedUpTo, totalRows])
+  }, [isLoadingMore, loadedUpTo, totalRows])
 
   // Apply filter/sort via backend
   const applyFilterSort = useCallback(async (newFilters, newSort) => {
-    if (!filePath) return
-
     try {
       const res = await fetch('/api/dataframe/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          filePath,
           filters: newFilters,
           sort: newSort.column ? newSort : null
         })
@@ -160,11 +149,14 @@ const DataFrameViewer = ({ content }) => {
         setRows(data.data)
         setTotalRows(data.totalRows)
         setLoadedUpTo(data.data.length)
+        if (listRef.current) {
+          listRef.current.scrollToRow({ index: 0 })
+        }
       }
     } catch (err) {
       console.error('Failed to apply filter/sort:', err)
     }
-  }, [filePath])
+  }, [])
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -206,8 +198,8 @@ const DataFrameViewer = ({ content }) => {
     const values = []
     for (let r = minRow; r <= maxRow; r++) {
       for (let c = minCol; c <= maxCol; c++) {
-        if (r < rows.length && c < content.columns.length) {
-          const val = rows[r][content.columns[c]]
+        if (r < rows.length && c < columns.length) {
+          const val = rows[r][columns[c]]
           if (typeof val === 'number' && !isNaN(val)) {
             values.push(val)
           }
@@ -223,16 +215,14 @@ const DataFrameViewer = ({ content }) => {
 
     const sum = values.reduce((a, b) => a + b, 0)
     const avg = sum / values.length
-    const min = Math.min(...values)
-    const max = Math.max(...values)
 
     return {
       count: cellCount,
       numericCount: values.length,
       sum: sum,
       average: avg,
-      min: min,
-      max: max
+      min: Math.min(...values),
+      max: Math.max(...values)
     }
   })()
 
@@ -250,15 +240,15 @@ const DataFrameViewer = ({ content }) => {
     for (let r = minRow; r <= maxRow; r++) {
       const cells = []
       for (let c = minCol; c <= maxCol; c++) {
-        if (r < rows.length && c < content.columns.length) {
-          cells.push(String(rows[r][content.columns[c]] ?? ''))
+        if (r < rows.length && c < columns.length) {
+          cells.push(String(rows[r][columns[c]] ?? ''))
         }
       }
       lines.push(cells.join('\t'))
     }
 
     navigator.clipboard.writeText(lines.join('\n'))
-  }, [selection, rows, content.columns])
+  }, [selection, rows, columns])
 
   // Handle column header click for sorting
   const handleSort = async (col) => {
@@ -271,17 +261,17 @@ const DataFrameViewer = ({ content }) => {
   }
 
   // Cell selection handlers
-  const handleCellMouseDown = (rowIdx, colIdx, e) => {
+  const handleCellMouseDown = useCallback((rowIdx, colIdx, e) => {
     if (e.button !== 0) return
     setSelection({ startRow: rowIdx, startCol: colIdx, endRow: rowIdx, endCol: colIdx })
     setIsSelecting(true)
-  }
+  }, [])
 
-  const handleCellMouseEnter = (rowIdx, colIdx) => {
-    if (isSelecting && selection) {
-      setSelection(prev => ({ ...prev, endRow: rowIdx, endCol: colIdx }))
+  const handleCellMouseEnter = useCallback((rowIdx, colIdx) => {
+    if (isSelecting) {
+      setSelection(prev => prev ? { ...prev, endRow: rowIdx, endCol: colIdx } : null)
     }
-  }
+  }, [isSelecting])
 
   const handleMouseUp = () => {
     setIsSelecting(false)
@@ -293,7 +283,7 @@ const DataFrameViewer = ({ content }) => {
   }, [])
 
   // Check if cell is in selection
-  const isCellSelected = (rowIdx, colIdx) => {
+  const isCellSelected = useCallback((rowIdx, colIdx) => {
     if (!selection) return false
     const { startRow, startCol, endRow, endCol } = selection
     const minRow = Math.min(startRow, endRow)
@@ -301,16 +291,15 @@ const DataFrameViewer = ({ content }) => {
     const minCol = Math.min(startCol, endCol)
     const maxCol = Math.max(startCol, endCol)
     return rowIdx >= minRow && rowIdx <= maxRow && colIdx >= minCol && colIdx <= maxCol
-  }
+  }, [selection])
 
   // Column resizing handlers
   const handleResizeStart = (col, e) => {
     e.preventDefault()
     e.stopPropagation()
-    setResizingColumn(col)
 
     const startX = e.clientX
-    const startWidth = columnWidths[col] || 120
+    const startWidth = columnWidths[col] || DEFAULT_COL_WIDTH
 
     const handleMouseMove = (e) => {
       const diff = e.clientX - startX
@@ -318,7 +307,6 @@ const DataFrameViewer = ({ content }) => {
     }
 
     const handleMouseUp = () => {
-      setResizingColumn(null)
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
     }
@@ -351,38 +339,6 @@ const DataFrameViewer = ({ content }) => {
     setActiveFilter(col)
     setFilterSearch('')
   }
-
-  // Collision detection for dropdown
-  useEffect(() => {
-    if (activeFilter && dropdownRef.current) {
-      const dropdown = dropdownRef.current
-      const rect = dropdown.getBoundingClientRect()
-      const viewportWidth = window.innerWidth
-      const viewportHeight = window.innerHeight
-
-      let newX = dropdownPosition.x
-      let newY = dropdownPosition.y
-
-      if (dropdownPosition.x + rect.width > viewportWidth - 10) {
-        newX = viewportWidth - rect.width - 10
-      }
-
-      if (dropdownPosition.y + rect.height > viewportHeight - 10) {
-        const button = filterButtonRefs.current[activeFilter]
-        if (button) {
-          const buttonRect = button.getBoundingClientRect()
-          newY = buttonRect.top - rect.height - 4
-        }
-      }
-
-      newX = Math.max(10, newX)
-      newY = Math.max(10, newY)
-
-      if (newX !== dropdownPosition.x || newY !== dropdownPosition.y) {
-        setDropdownPosition({ x: newX, y: newY })
-      }
-    }
-  }, [activeFilter, dropdownPosition.x, dropdownPosition.y])
 
   const applyFilter = async (col) => {
     const newFilters = { ...filters }
@@ -460,6 +416,25 @@ const DataFrameViewer = ({ content }) => {
     return Number.isInteger(num) ? num.toString() : num.toFixed(2)
   }
 
+  // Get column width
+  const getColWidth = useCallback((col) => columnWidths[col] || DEFAULT_COL_WIDTH, [columnWidths])
+
+  // Calculate total width for horizontal scrolling
+  const getTotalWidth = () => {
+    let total = ROW_NUM_WIDTH
+    for (const col of columns) {
+      total += getColWidth(col)
+    }
+    return total
+  }
+
+  // Sync scroll between header and list
+  const handleListScroll = useCallback((e) => {
+    if (headerRef.current && e.target) {
+      headerRef.current.scrollLeft = e.target.scrollLeft
+    }
+  }, [])
+
   const containerClass = `dataframe-container ${isFullscreen ? 'fullscreen' : ''}`
 
   return (
@@ -471,15 +446,7 @@ const DataFrameViewer = ({ content }) => {
           onClick={() => setIsFullscreen(!isFullscreen)}
           title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen'}
         >
-          {isFullscreen ? (
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M5.5 0a.5.5 0 0 1 .5.5v4A1.5 1.5 0 0 1 4.5 6h-4a.5.5 0 0 1 0-1h4a.5.5 0 0 0 .5-.5v-4a.5.5 0 0 1 .5-.5zm5 0a.5.5 0 0 1 .5.5v4a.5.5 0 0 0 .5.5h4a.5.5 0 0 1 0 1h-4A1.5 1.5 0 0 1 10 4.5v-4a.5.5 0 0 1 .5-.5zM0 10.5a.5.5 0 0 1 .5-.5h4A1.5 1.5 0 0 1 6 11.5v4a.5.5 0 0 1-1 0v-4a.5.5 0 0 0-.5-.5h-4a.5.5 0 0 1-.5-.5zm10 0a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 0 1h-4a.5.5 0 0 0-.5.5v4a.5.5 0 0 1-1 0v-4z"/>
-            </svg>
-          ) : (
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M1.5 1a.5.5 0 0 0-.5.5v4a.5.5 0 0 1-1 0v-4A1.5 1.5 0 0 1 1.5 0h4a.5.5 0 0 1 0 1h-4zM10 .5a.5.5 0 0 1 .5-.5h4A1.5 1.5 0 0 1 16 1.5v4a.5.5 0 0 1-1 0v-4a.5.5 0 0 0-.5-.5h-4a.5.5 0 0 1-.5-.5zM.5 10a.5.5 0 0 1 .5.5v4a.5.5 0 0 0 .5.5h4a.5.5 0 0 1 0 1h-4A1.5 1.5 0 0 1 0 14.5v-4a.5.5 0 0 1 .5-.5zm15 0a.5.5 0 0 1 .5.5v4a1.5 1.5 0 0 1-1.5 1.5h-4a.5.5 0 0 1 0-1h4a.5.5 0 0 0 .5-.5v-4a.5.5 0 0 1 .5-.5z"/>
-            </svg>
-          )}
+          {isFullscreen ? '⊠' : '⊞'}
         </button>
         <button
           className="toolbar-btn"
@@ -487,13 +454,10 @@ const DataFrameViewer = ({ content }) => {
           disabled={!selection}
           title="Copy selection (Ctrl+C)"
         >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
-            <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/>
-          </svg>
+          ⧉
         </button>
         <span className="toolbar-info">
-          {rows.length}{totalRows > rows.length ? ` of ${totalRows}` : ''} rows × {content.columns.length} cols
+          {rows.length}{totalRows > rows.length ? ` of ${totalRows.toLocaleString()}` : ''} rows × {columns.length} cols
           {activeFilterCount > 0 && ` • ${activeFilterCount} filter${activeFilterCount > 1 ? 's' : ''}`}
           {isLoadingMore && ' • Loading...'}
         </span>
@@ -501,72 +465,74 @@ const DataFrameViewer = ({ content }) => {
 
       {/* Table Header */}
       <div className="dataframe-header-container" ref={headerRef}>
-        <table className="dataframe-table dataframe-header-table" ref={tableRef}>
-          <thead>
-            <tr>
-              <th className="row-number-header">#</th>
-              {content.columns.map((col, colIdx) => {
-                const filtered = isFiltered(col)
-                const isSorted = sortConfig.column === col
-                const width = columnWidths[col]
-                return (
-                  <th
-                    key={col}
-                    className="filterable-header"
-                    style={width ? { width: width, minWidth: width } : undefined}
-                  >
-                    <div className="header-content" onClick={() => handleSort(col)}>
-                      <span className="header-text">{col}</span>
-                      <span className="header-icons">
-                        {isSorted && (
-                          <span className="sort-indicator">
-                            {sortConfig.direction === 'asc' ? '↑' : '↓'}
-                          </span>
-                        )}
-                        <button
-                          ref={el => filterButtonRefs.current[col] = el}
-                          className={`filter-btn ${filtered ? 'active' : ''}`}
-                          onClick={(e) => toggleFilter(col, e)}
-                          title="Filter"
-                        >
-                          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-                            <path d="M1.5 1.5A.5.5 0 0 1 2 1h12a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.128.334L10 8.692V13.5a.5.5 0 0 1-.342.474l-3 1A.5.5 0 0 1 6 14.5V8.692L1.628 3.834A.5.5 0 0 1 1.5 3.5v-2z"/>
-                          </svg>
-                        </button>
+        <div className="df-header-row" style={{ width: getTotalWidth() }}>
+          <div className="df-header-cell df-row-num" style={{ width: ROW_NUM_WIDTH, minWidth: ROW_NUM_WIDTH }}>
+            #
+          </div>
+          {columns.map((col) => {
+            const filtered = isFiltered(col)
+            const isSorted = sortConfig.column === col
+            const width = getColWidth(col)
+            return (
+              <div
+                key={col}
+                className="df-header-cell"
+                style={{ width, minWidth: width }}
+              >
+                <div className="header-content" onClick={() => handleSort(col)}>
+                  <span className="header-text">{col}</span>
+                  <span className="header-icons">
+                    {isSorted && (
+                      <span className="sort-indicator">
+                        {sortConfig.direction === 'asc' ? '↑' : '↓'}
                       </span>
-                    </div>
-                    <div
-                      className="resize-handle"
-                      onMouseDown={(e) => handleResizeStart(col, e)}
-                    />
-                  </th>
-                )
-              })}
-            </tr>
-          </thead>
-        </table>
+                    )}
+                    <button
+                      ref={el => filterButtonRefs.current[col] = el}
+                      className={`filter-btn ${filtered ? 'active' : ''}`}
+                      onClick={(e) => toggleFilter(col, e)}
+                      title="Filter"
+                    >
+                      ▼
+                    </button>
+                  </span>
+                </div>
+                <div
+                  className="resize-handle"
+                  onMouseDown={(e) => handleResizeStart(col, e)}
+                />
+              </div>
+            )
+          })}
+        </div>
       </div>
 
-      {/* Virtual scrolling table body */}
-      <div className="dataframe-body-container" onScroll={handleBodyScroll}>
-        <List
-          listRef={listRef}
-          defaultHeight={containerHeight}
-          rowCount={rows.length}
-          rowHeight={ROW_HEIGHT}
-          overscanCount={10}
-          rowComponent={VirtualRow}
-          rowProps={{
-            rows,
-            columns: content.columns,
-            columnWidths,
-            isCellSelected,
-            handleCellMouseDown,
-            handleCellMouseEnter
-          }}
-          onItemsRendered={handleItemsRendered}
-          style={{ overflowX: 'auto', height: containerHeight }}
-        />
+      {/* Virtual scrolling body */}
+      <div
+        className="dataframe-body-container"
+        onScroll={handleListScroll}
+        style={{ height: containerHeight, overflow: 'auto' }}
+      >
+        <div style={{ width: getTotalWidth(), minHeight: rows.length * ROW_HEIGHT }}>
+          <List
+            listRef={listRef}
+            defaultHeight={containerHeight}
+            rowCount={rows.length}
+            rowHeight={ROW_HEIGHT}
+            overscanCount={10}
+            rowComponent={VirtualRow}
+            rowProps={{
+              rows,
+              columns,
+              columnWidths,
+              getColWidth,
+              isCellSelected,
+              handleCellMouseDown,
+              handleCellMouseEnter
+            }}
+            onRowsRendered={handleRowsRendered}
+          />
+        </div>
       </div>
 
       {/* Status bar */}
