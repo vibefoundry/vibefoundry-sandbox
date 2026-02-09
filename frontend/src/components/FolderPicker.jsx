@@ -96,8 +96,10 @@ function FolderPicker({ onSelect, onCancel }) {
           ) : (
             <>
               {parentPath && (
-                <div className="folder-picker-item parent" onClick={handleParentClick}>
-                  <span className="folder-icon">📁</span>
+                <div className="folder-picker-item parent" onDoubleClick={handleParentClick}>
+                  <svg className="folder-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M.54 3.87L.5 3a2 2 0 0 1 2-2h3.672a2 2 0 0 1 1.414.586l.828.828A2 2 0 0 0 9.828 3H14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H2.5a2 2 0 0 1-2-2V3.87z"/>
+                  </svg>
                   <span className="folder-name">..</span>
                 </div>
               )}
@@ -108,9 +110,11 @@ function FolderPicker({ onSelect, onCancel }) {
                   <div
                     key={folder.path}
                     className="folder-picker-item"
-                    onClick={() => handleFolderClick(folder)}
+                    onDoubleClick={() => handleFolderClick(folder)}
                   >
-                    <span className="folder-icon">📁</span>
+                    <svg className="folder-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                      <path d="M.54 3.87L.5 3a2 2 0 0 1 2-2h3.672a2 2 0 0 1 1.414.586l.828.828A2 2 0 0 0 9.828 3H14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H2.5a2 2 0 0 1-2-2V3.87z"/>
+                    </svg>
                     <span className="folder-name">{folder.name}</span>
                   </div>
                 ))

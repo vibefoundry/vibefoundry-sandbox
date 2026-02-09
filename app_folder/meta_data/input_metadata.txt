@@ -1,7 +1,6 @@
 Input Folder Metadata
-Generated: (run metadatafarmer.py to update)
+Folder: /Users/angelo/Documents/GitHub/vibefoundry-sandbox/input_folder
+Generated: 2026-02-09 03:35:21
 ==================================================
 
-No CSV files found.
-
-Place your CSV files in input_folder/ and run metadatafarmer.py
+No data files found.

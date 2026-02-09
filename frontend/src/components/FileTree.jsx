@@ -773,11 +773,23 @@ const FileTree = ({
 
   // Handle delete confirmation
   const handleDeleteConfirm = async () => {
-    if (!deleteDialog) return
+    if (!deleteDialog || !deleteDialog.path) return
 
     try {
-      const parentHandle = await getParentHandle(rootHandle, deleteDialog.path)
-      await deleteEntry(parentHandle, deleteDialog.name, deleteDialog.isDirectory)
+      const response = await fetch('/api/files/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: deleteDialog.path,
+          isDirectory: deleteDialog.isDirectory
+        })
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.detail || 'Delete failed')
+      }
+
       if (onRefresh) onRefresh()
     } catch (err) {
       console.error('Delete failed:', err)

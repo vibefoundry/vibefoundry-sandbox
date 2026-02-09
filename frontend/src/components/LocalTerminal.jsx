@@ -19,7 +19,7 @@ function LocalTerminal({ id, onClose }) {
     const xterm = new XTerm({
       cursorBlink: true,
       cursorStyle: 'block',
-      fontSize: 12,
+      fontSize: 14,
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
       scrollback: 2000,
       cols: FIXED_COLS,

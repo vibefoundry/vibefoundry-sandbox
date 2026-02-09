@@ -4,6 +4,12 @@ FastAPI backend server for VibeFoundry IDE
 
 import os
 import asyncio
+import pty
+import fcntl
+import struct
+import termios
+import signal
+import select
 from pathlib import Path
 from typing import Optional
 from contextlib import asynccontextmanager
@@ -468,6 +474,37 @@ async def write_file(request: WriteFileRequest):
     return {"success": True, "path": request.path}
 
 
+class DeleteFileRequest(BaseModel):
+    path: str
+    isDirectory: bool = False
+
+
+@app.post("/api/files/delete")
+async def delete_file(request: DeleteFileRequest):
+    """Delete a file or directory"""
+    if not state.project_folder:
+        raise HTTPException(status_code=400, detail="No project folder selected")
+
+    file_path = state.project_folder / request.path
+
+    # Security check - ensure path is within project folder
+    try:
+        file_path.resolve().relative_to(state.project_folder.resolve())
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    import shutil
+    if request.isDirectory:
+        shutil.rmtree(file_path)
+    else:
+        file_path.unlink()
+
+    return {"success": True, "path": request.path}
+
+
 # DataFrame streaming endpoints
 
 class DataFrameQueryRequest(BaseModel):
@@ -871,6 +908,80 @@ async def notify_script_change(script_path: Path):
 
     for client in disconnected:
         state.websocket_clients.remove(client)
+
+
+# Local Terminal WebSocket
+
+def set_terminal_size(fd, rows, cols):
+    """Set terminal window size"""
+    winsize = struct.pack("HHHH", rows, cols, 0, 0)
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
+
+
+@app.websocket("/ws/terminal")
+async def websocket_terminal(websocket: WebSocket):
+    """WebSocket for local terminal"""
+    await websocket.accept()
+
+    # Fork a PTY
+    pid, fd = pty.fork()
+
+    if pid == 0:
+        # Child process - start bash
+        cwd = str(state.project_folder) if state.project_folder else str(Path.home())
+        os.chdir(cwd)
+        os.environ["TERM"] = "xterm-256color"
+        os.execvp("bash", ["bash", "-l"])
+    else:
+        # Parent process - relay data
+        set_terminal_size(fd, 24, 80)
+
+        # Make fd non-blocking
+        flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+        fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+
+        try:
+            while True:
+                # Check for data from terminal (non-blocking)
+                r, _, _ = select.select([fd], [], [], 0.05)
+                if fd in r:
+                    try:
+                        data = os.read(fd, 8192)
+                        if data:
+                            await websocket.send_text(data.decode("utf-8", errors="replace"))
+                    except OSError:
+                        break
+
+                # Check for data from websocket (with timeout)
+                try:
+                    data = await asyncio.wait_for(websocket.receive_text(), timeout=0.05)
+                    if data:
+                        # Check for JSON commands
+                        if data.startswith('{'):
+                            import json
+                            try:
+                                msg = json.loads(data)
+                                if msg.get('type') == 'resize':
+                                    rows = msg.get('rows', 24)
+                                    cols = msg.get('cols', 80)
+                                    set_terminal_size(fd, rows, cols)
+                                elif msg.get('type') == 'ping':
+                                    await websocket.send_text('{"type":"pong"}')
+                            except json.JSONDecodeError:
+                                pass
+                        else:
+                            os.write(fd, data.encode("utf-8"))
+                except asyncio.TimeoutError:
+                    pass
+                except WebSocketDisconnect:
+                    break
+        finally:
+            os.close(fd)
+            try:
+                os.kill(pid, signal.SIGTERM)
+                os.waitpid(pid, 0)
+            except:
+                pass
 
 
 # Serve static files (React app)
