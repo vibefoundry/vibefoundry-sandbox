@@ -746,25 +746,27 @@ function App() {
                 </div>
               )}
 
-              {/* Codespace Modal */}
-              {showCodespaceModal && (
-                <div className="codespace-modal-overlay" onClick={() => setShowCodespaceModal(false)}>
-                  <div className="codespace-modal" onClick={(e) => e.stopPropagation()}>
-                    <button className="codespace-modal-close" onClick={() => setShowCodespaceModal(false)}>×</button>
-                    <CodespaceSync
-                      projectPath={projectPath}
-                      currentConnection={syncConnection}
-                      onSyncComplete={() => {
-                        handleRefresh()
-                        if (activeTab === 'codespace') loadCodespaceFiles()
-                      }}
-                      onConnectionChange={(conn) => {
-                        setSyncConnection(conn)
-                      }}
-                    />
-                  </div>
+              {/* Codespace Modal - always render CodespaceSync to keep sync running */}
+              <div
+                className="codespace-modal-overlay"
+                style={{ display: showCodespaceModal ? 'flex' : 'none' }}
+                onClick={() => setShowCodespaceModal(false)}
+              >
+                <div className="codespace-modal" onClick={(e) => e.stopPropagation()}>
+                  <button className="codespace-modal-close" onClick={() => setShowCodespaceModal(false)}>×</button>
+                  <CodespaceSync
+                    projectPath={projectPath}
+                    currentConnection={syncConnection}
+                    onSyncComplete={() => {
+                      handleRefresh()
+                      if (activeTab === 'codespace') loadCodespaceFiles()
+                    }}
+                    onConnectionChange={(conn) => {
+                      setSyncConnection(conn)
+                    }}
+                  />
                 </div>
-              )}
+              </div>
             </div>
           </div>
         )}
