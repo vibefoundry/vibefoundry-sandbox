@@ -2206,110 +2206,51 @@ body {
 /* Terminal Pane - Right Side Panel */
 .terminal-pane {
   flex-shrink: 0;
+  width: 720px;
   display: flex;
   flex-direction: column;
   background: #ffffff;
   border-left: 1px solid var(--color-border);
-  position: relative;
-  z-index: 1;
   overflow: hidden;
 }
 
 .terminal-pane.collapsed {
   width: 0;
-  overflow: hidden;
   border-left: none;
 }
 
-.terminal-pane-body {
-  padding: 8px;
-  background: #ffffff;
-  flex: 1;
-  overflow: hidden;
-}
-
-
 /* Terminal Component */
 .terminal-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
   background: #ffffff;
+  padding: 8px;
+}
+
+.terminal-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 0;
+  font-size: 12px;
+  color: #666;
 }
 
 .terminal-body {
-  cursor: text;
-  background: #ffffff;
-}
-
-.terminal-body .xterm-viewport {
-  overflow-y: scroll !important;
-}
-
-/* Force scrollbar to be visible */
-.terminal-body .xterm-viewport::-webkit-scrollbar {
-  width: 10px;
-}
-
-.terminal-body .xterm-viewport::-webkit-scrollbar-track {
-  background: #f0f0f0;
-}
-
-.terminal-body .xterm-viewport::-webkit-scrollbar-thumb {
-  background: #888;
-  border-radius: 5px;
-}
-
-.terminal-body .xterm-viewport::-webkit-scrollbar-thumb:hover {
-  background: #666;
-}
-
-/* Terminal scroll position indicator */
-.terminal-scroll-indicator {
-  position: absolute;
-  right: 8px;
-  top: 8px;
-  bottom: 8px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  pointer-events: none;
-  z-index: 10;
-}
-
-.terminal-scroll-track {
   flex: 1;
-  width: 6px;
-  background: rgba(0, 0, 0, 0.1);
-  border-radius: 3px;
-  position: relative;
-  min-height: 100px;
+  min-height: 0;
 }
 
-.terminal-scroll-thumb {
-  position: absolute;
-  width: 6px;
-  height: 30px;
-  background: rgba(0, 0, 0, 0.4);
-  border-radius: 3px;
-  transform: translateY(-50%);
+.terminal-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ccc;
 }
 
-.terminal-scroll-label {
-  font-size: 10px;
-  color: #666;
-  background: rgba(255, 255, 255, 0.9);
-  padding: 2px 6px;
-  border-radius: 3px;
-  white-space: nowrap;
-}
-
-.terminal-container.expanded {
-  position: relative;
-}
-
-.terminal-end-line {
-  height: 2px;
-  background: #d0d0d0;
-  flex-shrink: 0;
+.terminal-dot.connected {
+  background: #22c55e;
 }
 
 /* Repository Tabs */

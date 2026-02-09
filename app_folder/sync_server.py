@@ -260,25 +260,23 @@ def set_winsize(fd, row, col, xpix=0, ypix=0):
     fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
 
 
-# Fixed terminal size - taller for better Claude Code experience
+# Fixed terminal size
 FIXED_COLS = 80
 FIXED_ROWS = 48
 
 
 @sock.route("/terminal")
 def terminal(ws):
-    """WebSocket terminal endpoint using tmux for better scroll handling"""
+    """WebSocket terminal endpoint"""
     pid, fd = pty.fork()
 
     if pid == 0:
-        # Child process - start tmux session
+        # Child process - start bash directly (no tmux)
         os.chdir(APP_FOLDER)
         os.environ["TERM"] = "xterm-256color"
-        # Use tmux with a named session, -A attaches if exists or creates new
-        os.execvp("tmux", ["tmux", "new-session", "-A", "-s", "vibefoundry"])
+        os.execvp("bash", ["bash", "-l"])
     else:
         # Parent process - relay data
-        # Set fixed terminal size
         set_winsize(fd, FIXED_ROWS, FIXED_COLS)
 
         # Make fd non-blocking
@@ -291,7 +289,6 @@ def terminal(ws):
                 r, _, _ = select.select([fd], [], [], 0.1)
                 if fd in r:
                     try:
-                        # Larger buffer to avoid splitting escape sequences
                         data = os.read(fd, 8192)
                         if data:
                             ws.send(data.decode("utf-8", errors="replace"))
@@ -302,15 +299,12 @@ def terminal(ws):
                 try:
                     data = ws.receive(timeout=0.01)
                     if data:
-                        # Check for JSON commands (resize, ping)
+                        # Check for JSON commands (resize)
                         if data.startswith('{'):
                             try:
                                 msg = json.loads(data)
                                 if msg.get('type') == 'resize':
-                                    # Use fixed size regardless of what frontend sends
                                     set_winsize(fd, FIXED_ROWS, FIXED_COLS)
-                                elif msg.get('type') == 'ping':
-                                    ws.send('{"type":"pong"}')
                             except:
                                 pass
                         else:

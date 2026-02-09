@@ -7,22 +7,14 @@ import '@xterm/xterm/css/xterm.css'
 const FIXED_COLS = 80
 const FIXED_ROWS = 48
 
-function Terminal({ syncUrl, isConnected, alwaysExpanded = false }) {
+function Terminal({ syncUrl, isConnected }) {
   const terminalRef = useRef(null)
   const xtermRef = useRef(null)
   const wsRef = useRef(null)
   const [isTerminalConnected, setIsTerminalConnected] = useState(false)
-  const [isExpanded, setIsExpanded] = useState(alwaysExpanded)
-
-  // Auto-expand when alwaysExpanded changes
-  useEffect(() => {
-    if (alwaysExpanded) {
-      setIsExpanded(true)
-    }
-  }, [alwaysExpanded])
 
   useEffect(() => {
-    if (!terminalRef.current || !isExpanded) return
+    if (!terminalRef.current || !isConnected || !syncUrl) return
 
     // Create terminal with fixed size
     const xterm = new XTerm({
@@ -71,116 +63,56 @@ function Terminal({ syncUrl, isConnected, alwaysExpanded = false }) {
 
     xtermRef.current = xterm
 
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close()
-      }
-      xterm.dispose()
-    }
-  }, [isExpanded])
-
-  // Connect WebSocket when expanded and syncUrl available
-  useEffect(() => {
-    if (!isExpanded || !syncUrl || !xtermRef.current) return
-
+    // Connect WebSocket
     const wsUrl = syncUrl.replace('https://', 'wss://').replace('http://', 'ws://') + '/terminal'
-
-    xtermRef.current.writeln('Connecting to terminal...')
-
     const ws = new WebSocket(wsUrl)
     wsRef.current = ws
 
-    // Ping interval to keep connection alive
-    let pingInterval = null
-
     ws.onopen = () => {
       setIsTerminalConnected(true)
-      xtermRef.current.clear()
-
-      // Send fixed terminal size to backend
+      xterm.clear()
       ws.send(JSON.stringify({ type: 'resize', cols: FIXED_COLS, rows: FIXED_ROWS }))
-
-      // Auto-run claude after shell prompt loads
-      setTimeout(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send('claude\n')
-        }
-      }, 2000)
-
-      // Start ping interval to keep connection alive (every 30 seconds)
-      pingInterval = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'ping' }))
-        }
-      }, 30000)
-
     }
 
     ws.onmessage = (event) => {
-      // Filter out pong messages
-      const filtered = event.data.replace(/\{"type":\s*"pong"\}/g, '')
-      if (filtered) {
-        xtermRef.current.write(filtered)
-      }
+      xterm.write(event.data)
     }
 
     ws.onclose = () => {
       setIsTerminalConnected(false)
-      if (pingInterval) clearInterval(pingInterval)
-      if (xtermRef.current) {
-        xtermRef.current.writeln('\r\n\x1b[31mConnection closed\x1b[0m')
-      }
+      xterm.writeln('\r\n\x1b[31mConnection closed\x1b[0m')
     }
 
     ws.onerror = (error) => {
       console.error('WebSocket error:', error)
-      if (xtermRef.current) {
-        xtermRef.current.writeln('\r\n\x1b[31mConnection error\x1b[0m')
-      }
+      xterm.writeln('\r\n\x1b[31mConnection error\x1b[0m')
     }
 
-    // Handle direct keyboard input in terminal
-    const inputDisposable = xtermRef.current.onData((data) => {
+    // Handle keyboard input
+    const inputDisposable = xterm.onData((data) => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(data)
       }
     })
 
     return () => {
-      if (pingInterval) clearInterval(pingInterval)
       inputDisposable.dispose()
       ws.close()
+      xterm.dispose()
     }
-  }, [isExpanded, syncUrl])
+  }, [syncUrl, isConnected])
 
   if (!isConnected) {
     return null
   }
 
-  // When alwaysExpanded, render terminal directly (type directly in terminal)
-  if (alwaysExpanded) {
-    return (
-      <div className="terminal-container expanded">
-        <div className="terminal-body" ref={terminalRef}></div>
-      </div>
-    )
-  }
-
   return (
-    <div className={`terminal-container ${isExpanded ? 'expanded' : 'collapsed'}`}>
-      <div className="terminal-header" onClick={() => setIsExpanded(!isExpanded)}>
-        <span className="terminal-title">
-          <span className={`terminal-dot ${isTerminalConnected ? 'connected' : ''}`}></span>
-          Terminal
-        </span>
-        <span className="terminal-toggle">{isExpanded ? '−' : '+'}</span>
+    <div className="terminal-container">
+      <div className="terminal-status">
+        <span className={`terminal-dot ${isTerminalConnected ? 'connected' : ''}`}></span>
+        <span>{isTerminalConnected ? 'Connected' : 'Connecting...'}</span>
       </div>
-      {isExpanded && (
-        <>
-          <div className="terminal-body" ref={terminalRef}></div>
-          <div className="terminal-end-line"></div>
-        </>
-      )}
+      <div className="terminal-body" ref={terminalRef}></div>
     </div>
   )
 }

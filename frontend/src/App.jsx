@@ -714,16 +714,13 @@ function App() {
           )}
         </div>
 
-        {/* Terminal Pane - stays mounted when collapsed to keep connection alive */}
+        {/* Terminal Pane */}
         {syncConnection.syncUrl && showTerminal && (
           <div className={`terminal-pane ${terminalCollapsed ? 'collapsed' : ''}`}>
-            <div className="terminal-pane-body">
-              <Terminal
-                syncUrl={syncConnection.syncUrl}
-                isConnected={syncConnection.isConnected}
-                alwaysExpanded={true}
-              />
-            </div>
+            <Terminal
+              syncUrl={syncConnection.syncUrl}
+              isConnected={syncConnection.isConnected}
+            />
           </div>
         )}
       </div>
