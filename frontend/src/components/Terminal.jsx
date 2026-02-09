@@ -7,11 +7,12 @@ import '@xterm/xterm/css/xterm.css'
 const FIXED_COLS = 80
 const FIXED_ROWS = 48
 
-function Terminal({ syncUrl, isConnected }) {
+function Terminal({ syncUrl, isConnected, autoLaunchClaude = false }) {
   const terminalRef = useRef(null)
   const xtermRef = useRef(null)
   const wsRef = useRef(null)
   const [isTerminalConnected, setIsTerminalConnected] = useState(false)
+  const hasLaunchedClaudeRef = useRef(false)
 
   useEffect(() => {
     if (!terminalRef.current || !isConnected || !syncUrl) return
@@ -72,6 +73,16 @@ function Terminal({ syncUrl, isConnected }) {
       setIsTerminalConnected(true)
       xterm.clear()
       ws.send(JSON.stringify({ type: 'resize', cols: FIXED_COLS, rows: FIXED_ROWS }))
+
+      // Auto-launch Claude Code if requested and not already launched
+      if (autoLaunchClaude && !hasLaunchedClaudeRef.current) {
+        hasLaunchedClaudeRef.current = true
+        setTimeout(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send('claude\n')
+          }
+        }, 500)
+      }
     }
 
     ws.onmessage = (event) => {
@@ -80,6 +91,7 @@ function Terminal({ syncUrl, isConnected }) {
 
     ws.onclose = () => {
       setIsTerminalConnected(false)
+      hasLaunchedClaudeRef.current = false  // Reset so next launch will auto-run claude
       xterm.writeln('\r\n\x1b[31mConnection closed\x1b[0m')
     }
 

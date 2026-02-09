@@ -87,13 +87,11 @@ const DataFrameViewer = ({ content }) => {
     const measureHeight = () => {
       if (containerRef.current) {
         const container = containerRef.current
-        const toolbar = container.querySelector('.dataframe-toolbar')
         const statusbar = container.querySelector('.dataframe-statusbar')
         const header = container.querySelector('.dataframe-header-container')
-        const toolbarH = toolbar?.offsetHeight || 0
         const statusH = statusbar?.offsetHeight || 0
         const headerH = header?.offsetHeight || 0
-        const availableHeight = container.offsetHeight - toolbarH - statusH - headerH
+        const availableHeight = container.offsetHeight - statusH - headerH
         setContainerHeight(Math.max(100, availableHeight))
       }
     }
@@ -443,30 +441,6 @@ const DataFrameViewer = ({ content }) => {
 
   return (
     <div className={containerClass} ref={containerRef}>
-      {/* Toolbar */}
-      <div className="dataframe-toolbar">
-        <button
-          className="toolbar-btn"
-          onClick={() => setIsFullscreen(!isFullscreen)}
-          title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen'}
-        >
-          {isFullscreen ? '⊠' : '⊞'}
-        </button>
-        <button
-          className="toolbar-btn"
-          onClick={copySelection}
-          disabled={!selection}
-          title="Copy selection (Ctrl+C)"
-        >
-          ⧉
-        </button>
-        <span className="toolbar-info">
-          {rows.length}{totalRows > rows.length ? ` of ${totalRows.toLocaleString()}` : ''} rows × {columns.length} cols
-          {activeFilterCount > 0 && ` • ${activeFilterCount} filter${activeFilterCount > 1 ? 's' : ''}`}
-          {isLoadingMore && ' • Loading...'}
-        </span>
-      </div>
-
       {/* Table Header */}
       <div className="dataframe-header-container" ref={headerRef}>
         <div className="df-header-row" style={{ width: getTotalWidth() }}>
@@ -542,19 +516,14 @@ const DataFrameViewer = ({ content }) => {
       {/* Status bar */}
       <div className="dataframe-statusbar">
         <span className="status-left">
-          {selection ? (
-            `Selected: ${Math.abs(selection.endRow - selection.startRow) + 1} × ${Math.abs(selection.endCol - selection.startCol) + 1} cells`
-          ) : (
-            `Click and drag to select cells`
-          )}
+          {rows.length}{totalRows > rows.length ? ` of ${totalRows.toLocaleString()}` : ''} rows × {columns.length} cols
+          {activeFilterCount > 0 && ` • ${activeFilterCount} filter${activeFilterCount > 1 ? 's' : ''}`}
+          {isLoadingMore && ' • Loading...'}
         </span>
         {selectionStats && selectionStats.numericCount > 0 && (
           <span className="status-right">
-            <span className="stat">Count: {selectionStats.numericCount}</span>
             <span className="stat">Sum: {formatNumber(selectionStats.sum)}</span>
             <span className="stat">Avg: {formatNumber(selectionStats.average)}</span>
-            <span className="stat">Min: {formatNumber(selectionStats.min)}</span>
-            <span className="stat">Max: {formatNumber(selectionStats.max)}</span>
           </span>
         )}
       </div>

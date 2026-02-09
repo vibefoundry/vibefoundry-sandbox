@@ -191,37 +191,30 @@ function ScriptRunner({ folderName, height, onHeightChange, isResizing, onResize
       style={{ height: collapsed ? 48 : height }}
     >
       <div className="script-runner-resize-handle" onMouseDown={onResizeStart} />
-      <div className="script-runner-header" onClick={() => setCollapsed(!collapsed)}>
-        <span className="script-runner-title">Script Runner</span>
-        <span className="script-count">{scripts.length} script{scripts.length !== 1 ? 's' : ''}</span>
-        <span className="collapse-icon">{collapsed ? '▲' : '▼'}</span>
+      <div className="script-runner-header">
+        <div className="script-runner-header-left" onClick={() => setCollapsed(!collapsed)}>
+          <span className="collapse-icon">{collapsed ? '▶' : '▼'}</span>
+          <span className="script-runner-title">Script Runner</span>
+        </div>
+        <div className="script-runner-header-actions" onClick={(e) => e.stopPropagation()}>
+          <button
+            className="btn-header"
+            onClick={handleRun}
+            disabled={isRunning || selectedScripts.size === 0}
+          >
+            {isRunning ? 'Running...' : 'Run'}
+          </button>
+          <button className="btn-header" onClick={fetchScripts}>
+            Refresh
+          </button>
+          <button className="btn-header" onClick={handleRefreshMetadata}>
+            Farm Metadata
+          </button>
+        </div>
       </div>
 
       {!collapsed && (
         <div className="script-runner-body">
-          <div className="script-runner-controls">
-            <button
-              className="btn-run"
-              onClick={handleRun}
-              disabled={isRunning || selectedScripts.size === 0}
-            >
-              {isRunning ? 'Running...' : '▶ Run'}
-            </button>
-            <button className="btn-flat" onClick={fetchScripts}>
-              ↻ Refresh
-            </button>
-            <button className="btn-flat" onClick={handleRefreshMetadata}>
-              📋 Metadata
-            </button>
-            <label className="auto-run-toggle">
-              <input
-                type="checkbox"
-                checked={autoRun}
-                onChange={(e) => setAutoRun(e.target.checked)}
-              />
-              Auto-run
-            </label>
-          </div>
 
           <div className="script-list">
             {scripts.length > 0 ? (
@@ -246,15 +239,10 @@ function ScriptRunner({ folderName, height, onHeightChange, isResizing, onResize
             )}
           </div>
 
-          <div className={`script-output-section ${outputExpanded ? 'expanded' : ''}`}>
+          <div className="script-output-section">
             <div className="script-output-header">
               <span>Output</span>
-              <div className="script-output-actions">
-                <button className="btn-link" onClick={clearOutput}>Clear</button>
-                <button className="btn-link" onClick={() => setOutputExpanded(!outputExpanded)}>
-                  {outputExpanded ? 'Collapse' : 'Expand'}
-                </button>
-              </div>
+              <button className="btn-link" onClick={clearOutput}>Clear</button>
             </div>
             <div className="script-output" ref={outputRef}>
               {output.map((entry, i) => (

@@ -499,43 +499,24 @@ function App() {
           </div>
           {syncConnection.syncUrl && (
             <div className="top-bar-section top-bar-right">
-              <span className={`status-dot ${syncConnection.isConnected ? 'connected' : ''}`}></span>
-              <button
-                className="btn-flat"
-                onClick={handlePullScripts}
-                disabled={!syncConnection.isConnected || isPulling}
-              >
-                {isPulling ? 'Pulling...' : 'Pull'}
-              </button>
-              <button
-                className="btn-flat"
-                onClick={handlePushScripts}
-                disabled={!syncConnection.isConnected || isPushing}
-              >
-                {isPushing ? 'Pushing...' : 'Push'}
-              </button>
-              <span className="top-bar-divider"></span>
               <span className="top-bar-title">Terminal</span>
-              {showTerminal && (
+              <button
+                className="btn-flat"
+                onClick={() => setTerminalCollapsed(!terminalCollapsed)}
+              >
+                {terminalCollapsed ? 'Expand' : 'Collapse'}
+              </button>
+              {showTerminal && !terminalCollapsed && (
                 <button
                   className="btn-flat"
-                  onClick={() => setTerminalCollapsed(!terminalCollapsed)}
+                  onClick={() => {
+                    setShowTerminal(false)
+                    setTimeout(() => setShowTerminal(true), 100)
+                  }}
                 >
-                  {terminalCollapsed ? 'Expand' : 'Collapse'}
+                  Relaunch
                 </button>
               )}
-              <button
-                className="btn-flat btn-primary"
-                onClick={() => {
-                  // Always (re)launch - closes existing and starts fresh
-                  setShowTerminal(false)
-                  setTerminalCollapsed(false)
-                  setTimeout(() => setShowTerminal(true), 100)
-                }}
-                disabled={!syncConnection.isConnected}
-              >
-                Launch
-              </button>
             </div>
           )}
         </div>
@@ -715,12 +696,25 @@ function App() {
         </div>
 
         {/* Terminal Pane */}
-        {syncConnection.syncUrl && showTerminal && (
-          <div className={`terminal-pane ${terminalCollapsed ? 'collapsed' : ''}`}>
-            <Terminal
-              syncUrl={syncConnection.syncUrl}
-              isConnected={syncConnection.isConnected}
-            />
+        {syncConnection.syncUrl && !terminalCollapsed && (
+          <div className="terminal-pane">
+            {showTerminal ? (
+              <Terminal
+                syncUrl={syncConnection.syncUrl}
+                isConnected={syncConnection.isConnected}
+                autoLaunchClaude={true}
+              />
+            ) : (
+              <div className="terminal-launch-screen">
+                <button
+                  className="btn-launch-claude"
+                  onClick={() => setShowTerminal(true)}
+                  disabled={!syncConnection.isConnected}
+                >
+                  Launch Claude Code in Virtual Sandbox
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

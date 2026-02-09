@@ -34,16 +34,28 @@
 .script-runner-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px 16px;
+  justify-content: space-between;
+  padding: 8px 12px;
   background: var(--color-bg-alt);
-  cursor: pointer;
   user-select: none;
   border-bottom: 1px solid var(--color-border);
 }
 
-.script-runner-header:hover {
-  background: var(--color-bg-subtle);
+.script-runner-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.script-runner-header-left:hover {
+  opacity: 0.8;
+}
+
+.script-runner-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .script-runner-title {
@@ -51,73 +63,44 @@
   font-size: 13px;
 }
 
-.script-count {
-  font-size: 11px;
-  color: var(--color-text-muted);
-  margin-left: auto;
-}
-
 .collapse-icon {
   font-size: 10px;
   color: var(--color-text-muted);
 }
 
+.btn-header {
+  background: none;
+  border: 1px solid var(--color-border);
+  padding: 4px 8px;
+  border-radius: var(--radius);
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--color-text);
+}
+
+.btn-header:hover:not(:disabled) {
+  background: var(--color-bg-subtle);
+}
+
+.btn-header:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .script-runner-body {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   flex: 1;
   min-height: 0;
   overflow: hidden;
 }
 
-.script-runner-controls {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.btn-run {
-  background: var(--color-accent);
-  color: white;
-  border: none;
-  padding: 6px 12px;
-  border-radius: var(--radius);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.btn-run:hover:not(:disabled) {
-  background: var(--color-accent-hover);
-}
-
-.btn-run:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.auto-run-toggle {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--color-text-muted);
-  margin-left: auto;
-  cursor: pointer;
-}
-
-.auto-run-toggle input {
-  cursor: pointer;
-}
-
 .script-list {
+  width: 25%;
+  flex-shrink: 0;
   padding: 8px;
-  flex: 1;
-  min-height: 60px;
   overflow-y: auto;
-  border-bottom: 1px solid var(--color-border);
+  border-right: 1px solid var(--color-border);
 }
 
 .script-list-actions {
@@ -168,12 +151,8 @@
 .script-output-section {
   display: flex;
   flex-direction: column;
-  height: 80px;
-  flex-shrink: 0;
-}
-
-.script-output-section.expanded {
-  height: 200px;
+  flex: 1;
+  min-width: 0;
 }
 
 .script-output-header {
