@@ -37,10 +37,13 @@ function App() {
   const [isPulling, setIsPulling] = useState(false)
   const [isPushing, setIsPushing] = useState(false)
   const [deletedFileToast, setDeletedFileToast] = useState(null) // { filename } for toast animation
-  const [showFolderPicker, setShowFolderPicker] = useState(false)
+  const [showFolderPicker, setShowFolderPicker] = useState(true)
   const [projectPath, setProjectPath] = useState(null)
   const [scriptRunnerHeight, setScriptRunnerHeight] = useState(null) // null = calculate 1/4 on mount
   const [isResizingScriptRunner, setIsResizingScriptRunner] = useState(false)
+  const [showCodespaceModal, setShowCodespaceModal] = useState(true)
+  const [terminalWidth, setTerminalWidth] = useState(720)
+  const [isResizingTerminal, setIsResizingTerminal] = useState(false)
   const rootHandleRef = useRef(null)
   const mainContentRef = useRef(null)
   const pollIntervalRef = useRef(null)
@@ -110,6 +113,36 @@ function App() {
     document.addEventListener('mousemove', handleResizeMove)
     document.addEventListener('mouseup', handleResizeEnd)
   }, [scriptRunnerHeight])
+
+  // Terminal pane resize handler
+  const isResizingTerminalRef = useRef(false)
+
+  const handleTerminalResizeStart = useCallback((e) => {
+    e.preventDefault()
+    isResizingTerminalRef.current = true
+    setIsResizingTerminal(true)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+
+    const handleResizeMove = (e) => {
+      if (!isResizingTerminalRef.current) return
+      e.preventDefault()
+      const newWidth = Math.max(400, Math.min(1200, window.innerWidth - e.clientX))
+      setTerminalWidth(newWidth)
+    }
+
+    const handleResizeEnd = () => {
+      isResizingTerminalRef.current = false
+      setIsResizingTerminal(false)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      document.removeEventListener('mousemove', handleResizeMove)
+      document.removeEventListener('mouseup', handleResizeEnd)
+    }
+
+    document.addEventListener('mousemove', handleResizeMove)
+    document.addEventListener('mouseup', handleResizeEnd)
+  }, [])
 
   // Initialize script runner height to 1/4 of main content
   useEffect(() => {
@@ -497,8 +530,20 @@ function App() {
               {showPreview ? '' : (selectedFile?.name || 'No file selected')}
             </span>
           </div>
-          <div className="top-bar-section top-bar-right">
-            <span className="top-bar-title">Terminal</span>
+          <div className="top-bar-section top-bar-right" style={{ width: terminalCollapsed ? 'auto' : terminalWidth }}>
+            <span className="top-bar-title">Virtual Terminal</span>
+            <div className="codespace-status">
+              <span className={`status-dot ${syncConnection.isConnected ? 'connected' : ''}`}></span>
+              <span className="status-text">
+                {syncConnection.isConnected ? 'Connected' : 'Not connected'}
+              </span>
+            </div>
+            <button
+              className="btn-flat"
+              onClick={() => setShowCodespaceModal(true)}
+            >
+              Codespace
+            </button>
             <button
               className="btn-flat"
               onClick={() => setTerminalCollapsed(!terminalCollapsed)}
@@ -663,50 +708,64 @@ function App() {
 
           {/* Script Runner Panel */}
           {canWrite && tree.length > 0 && (
-            <ScriptRunner
-              folderName={folderName}
-              height={scriptRunnerHeight || 200}
-              onHeightChange={setScriptRunnerHeight}
-              isResizing={isResizingScriptRunner}
-              onResizeStart={handleScriptRunnerResizeStart}
-            />
+            <>
+              <div
+                className="script-runner-resize-handle"
+                onMouseDown={handleScriptRunnerResizeStart}
+              />
+              <ScriptRunner
+                folderName={folderName}
+                height={scriptRunnerHeight}
+              />
+            </>
           )}
         </div>
 
         {/* Terminal Pane */}
         {!terminalCollapsed && (
-          <div className="terminal-pane">
-            {showTerminal && syncConnection.syncUrl ? (
-              <Terminal
-                syncUrl={syncConnection.syncUrl}
-                isConnected={syncConnection.isConnected}
-                autoLaunchClaude={true}
-              />
-            ) : (
-              <div className="terminal-launch-screen">
-                {syncConnection.syncUrl ? (
-                  <button
-                    className="btn-launch-claude"
-                    onClick={() => setShowTerminal(true)}
-                    disabled={!syncConnection.isConnected}
-                  >
-                    Launch Claude Code in Virtual Sandbox
-                  </button>
-                ) : (
-                  <div className="terminal-connect-panel">
-                    <h3>Connect to Code Space</h3>
+          <div className={`terminal-pane ${isResizingTerminal ? 'resizing' : ''}`} style={{ width: terminalWidth }}>
+            <div className="terminal-resize-handle" onMouseDown={handleTerminalResizeStart} />
+            <div className="terminal-main">
+              {showTerminal && syncConnection.syncUrl ? (
+                <Terminal
+                  syncUrl={syncConnection.syncUrl}
+                  isConnected={syncConnection.isConnected}
+                  autoLaunchClaude={true}
+                />
+              ) : (
+                <div className="terminal-launch-screen">
+                  {syncConnection.syncUrl && !showCodespaceModal && (
+                    <button
+                      className="btn-launch-claude"
+                      onClick={() => setShowTerminal(true)}
+                      disabled={!syncConnection.isConnected}
+                    >
+                      Launch Claude Code in Virtual Sandbox
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Codespace Modal */}
+              {showCodespaceModal && (
+                <div className="codespace-modal-overlay" onClick={() => setShowCodespaceModal(false)}>
+                  <div className="codespace-modal" onClick={(e) => e.stopPropagation()}>
+                    <button className="codespace-modal-close" onClick={() => setShowCodespaceModal(false)}>×</button>
                     <CodespaceSync
                       projectPath={projectPath}
+                      currentConnection={syncConnection}
                       onSyncComplete={() => {
                         handleRefresh()
                         if (activeTab === 'codespace') loadCodespaceFiles()
                       }}
-                      onConnectionChange={setSyncConnection}
+                      onConnectionChange={(conn) => {
+                        setSyncConnection(conn)
+                      }}
                     />
                   </div>
-                )}
-              </div>
-            )}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

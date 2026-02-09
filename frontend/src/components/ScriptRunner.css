@@ -3,32 +3,12 @@
   background: var(--color-bg);
   display: flex;
   flex-direction: column;
-  min-height: 48px;
-  position: relative;
+  min-height: 150px;
   flex-shrink: 0;
 }
 
 .script-runner.collapsed {
-  height: 48px !important;
-}
-
-.script-runner.resizing {
-  user-select: none;
-}
-
-.script-runner-resize-handle {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 6px;
-  cursor: ns-resize;
-  z-index: 10;
-}
-
-.script-runner-resize-handle:hover {
-  background: var(--color-accent);
-  opacity: 0.3;
+  height: 48px;
 }
 
 .script-runner-header {
@@ -45,27 +25,41 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  cursor: pointer;
 }
 
-.script-runner-header-left:hover {
-  opacity: 0.8;
+.script-runner-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.script-runner-tab {
+  padding: 4px 12px;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: var(--radius);
+}
+
+.script-runner-tab:hover {
+  background: var(--color-bg-subtle);
+}
+
+.script-runner-tab.active {
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.collapse-icon {
+  cursor: pointer;
 }
 
 .script-runner-header-actions {
   display: flex;
   align-items: center;
   gap: 4px;
-}
-
-.script-runner-title {
-  font-weight: 600;
-  font-size: 13px;
-}
-
-.collapse-icon {
-  font-size: 10px;
-  color: var(--color-text-muted);
 }
 
 .btn-header {
@@ -95,12 +89,25 @@
   overflow: hidden;
 }
 
+.script-runner-body.resizing {
+  user-select: none;
+}
+
 .script-list {
-  width: 25%;
   flex-shrink: 0;
   padding: 8px;
   overflow-y: auto;
-  border-right: 1px solid var(--color-border);
+}
+
+.scripts-resize-handle {
+  width: 4px;
+  cursor: col-resize;
+  background: var(--color-border);
+  flex-shrink: 0;
+}
+
+.scripts-resize-handle:hover {
+  background: var(--color-accent);
 }
 
 .script-list-actions {
@@ -155,23 +162,6 @@
   min-width: 0;
 }
 
-.script-output-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 12px;
-  background: var(--color-bg-alt);
-  font-size: 12px;
-  font-weight: 600;
-  border-bottom: 1px solid var(--color-border);
-  flex-shrink: 0;
-}
-
-.script-output-actions {
-  display: flex;
-  gap: 12px;
-}
-
 .script-output {
   flex: 1;
   min-height: 0;
@@ -223,4 +213,118 @@
 .output-placeholder {
   color: var(--color-text-muted);
   font-style: italic;
+}
+
+/* Local Terminal Tab */
+.local-terminal-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #1e1e1e;
+  overflow: hidden;
+}
+
+.terminal-tabs-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 8px;
+  background: #252526;
+  border-bottom: 1px solid #3c3c3c;
+}
+
+.terminal-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: #2d2d2d;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px 4px 0 0;
+  font-size: 11px;
+  color: #999;
+  cursor: pointer;
+}
+
+.terminal-tab:hover {
+  background: #3c3c3c;
+}
+
+.terminal-tab.active {
+  background: #1e1e1e;
+  color: #fff;
+  border-bottom-color: #1e1e1e;
+}
+
+.terminal-tab-close {
+  background: none;
+  border: none;
+  color: #666;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.terminal-tab-close:hover {
+  color: #fff;
+}
+
+.terminal-tab-new {
+  background: none;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  color: #999;
+  font-size: 14px;
+  padding: 2px 8px;
+  cursor: pointer;
+  margin-left: 4px;
+}
+
+.terminal-tab-new:hover {
+  background: #3c3c3c;
+  color: #fff;
+}
+
+.terminal-tab-clear {
+  background: none;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  color: #999;
+  font-size: 11px;
+  padding: 4px 8px;
+  cursor: pointer;
+  margin-left: auto;
+}
+
+.terminal-tab-clear:hover {
+  background: #3c3c3c;
+  color: #fff;
+}
+
+.terminal-instances {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.terminal-instance-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.local-terminal-instance {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.local-terminal-header {
+  display: none;
+}
+
+.local-terminal-content {
+  flex: 1;
+  padding: 4px;
 }

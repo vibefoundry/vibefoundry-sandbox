@@ -1,16 +1,24 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import LocalTerminal from './LocalTerminal'
 import './ScriptRunner.css'
 
-function ScriptRunner({ folderName, height, onHeightChange, isResizing, onResizeStart }) {
+let terminalIdCounter = 1
+
+function ScriptRunner({ folderName, height }) {
+  const [activeTab, setActiveTab] = useState('scripts') // 'scripts' or 'terminal'
+  const [terminals, setTerminals] = useState([{ id: terminalIdCounter }])
+  const [activeTerminalId, setActiveTerminalId] = useState(terminalIdCounter)
   const [scripts, setScripts] = useState([])
   const [selectedScripts, setSelectedScripts] = useState(new Set())
   const [isRunning, setIsRunning] = useState(false)
   const [output, setOutput] = useState([])
   const [autoRun, setAutoRun] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
-  const [outputExpanded, setOutputExpanded] = useState(false)
+  const [scriptsWidth, setScriptsWidth] = useState(200)
+  const [isResizingScripts, setIsResizingScripts] = useState(false)
   const outputRef = useRef(null)
   const wsRef = useRef(null)
+  const scriptsResizeRef = useRef(null)
 
   // Fetch scripts list
   const fetchScripts = useCallback(async () => {
@@ -183,40 +191,115 @@ function ScriptRunner({ folderName, height, onHeightChange, isResizing, onResize
     setOutput([])
   }
 
+  const addTerminal = () => {
+    terminalIdCounter++
+    const newTerminal = { id: terminalIdCounter }
+    setTerminals(prev => [...prev, newTerminal])
+    setActiveTerminalId(terminalIdCounter)
+  }
+
+  const closeTerminal = (id) => {
+    setTerminals(prev => {
+      const newTerminals = prev.filter(t => t.id !== id)
+      if (newTerminals.length === 0) {
+        // Always keep at least one terminal
+        terminalIdCounter++
+        return [{ id: terminalIdCounter }]
+      }
+      // If we closed the active terminal, switch to another
+      if (activeTerminalId === id) {
+        setActiveTerminalId(newTerminals[newTerminals.length - 1].id)
+      }
+      return newTerminals
+    })
+  }
+
+  const clearTerminals = () => {
+    terminalIdCounter++
+    setTerminals([{ id: terminalIdCounter }])
+    setActiveTerminalId(terminalIdCounter)
+  }
+
+  const handleScriptsResizeStart = (e) => {
+    e.preventDefault()
+    scriptsResizeRef.current = true
+    setIsResizingScripts(true)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+
+    const startX = e.clientX
+    const startWidth = scriptsWidth
+
+    const handleResizeMove = (e) => {
+      if (!scriptsResizeRef.current) return
+      const delta = e.clientX - startX
+      const newWidth = Math.max(100, Math.min(400, startWidth + delta))
+      setScriptsWidth(newWidth)
+    }
+
+    const handleResizeEnd = () => {
+      scriptsResizeRef.current = false
+      setIsResizingScripts(false)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      document.removeEventListener('mousemove', handleResizeMove)
+      document.removeEventListener('mouseup', handleResizeEnd)
+    }
+
+    document.addEventListener('mousemove', handleResizeMove)
+    document.addEventListener('mouseup', handleResizeEnd)
+  }
+
   if (!folderName) return null
 
   return (
-    <div
-      className={`script-runner ${collapsed ? 'collapsed' : ''} ${isResizing ? 'resizing' : ''}`}
-      style={{ height: collapsed ? 48 : height }}
-    >
-      <div className="script-runner-resize-handle" onMouseDown={onResizeStart} />
+    <div className={`script-runner ${collapsed ? 'collapsed' : ''}`} style={height ? { height } : undefined}>
       <div className="script-runner-header">
-        <div className="script-runner-header-left" onClick={() => setCollapsed(!collapsed)}>
-          <span className="collapse-icon">{collapsed ? '▶' : '▼'}</span>
-          <span className="script-runner-title">Script Runner</span>
+        <div className="script-runner-header-left">
+          <span className="collapse-icon" onClick={() => setCollapsed(!collapsed)}>
+            {collapsed ? '▶' : '▼'}
+          </span>
+          <div className="script-runner-tabs">
+            <button
+              className={`script-runner-tab ${activeTab === 'scripts' ? 'active' : ''}`}
+              onClick={() => setActiveTab('scripts')}
+            >
+              Script Runner
+            </button>
+            <button
+              className={`script-runner-tab ${activeTab === 'terminal' ? 'active' : ''}`}
+              onClick={() => setActiveTab('terminal')}
+            >
+              Local Terminal
+            </button>
+          </div>
         </div>
-        <div className="script-runner-header-actions" onClick={(e) => e.stopPropagation()}>
-          <button
-            className="btn-header"
-            onClick={handleRun}
-            disabled={isRunning || selectedScripts.size === 0}
-          >
-            {isRunning ? 'Running...' : 'Run'}
-          </button>
-          <button className="btn-header" onClick={fetchScripts}>
-            Refresh
-          </button>
-          <button className="btn-header" onClick={handleRefreshMetadata}>
-            Farm Metadata
-          </button>
-        </div>
+        {activeTab === 'scripts' && (
+          <div className="script-runner-header-actions" onClick={(e) => e.stopPropagation()}>
+            <button
+              className="btn-header"
+              onClick={handleRun}
+              disabled={isRunning || selectedScripts.size === 0}
+            >
+              {isRunning ? 'Running...' : 'Run'}
+            </button>
+            <button className="btn-header" onClick={fetchScripts}>
+              Refresh
+            </button>
+            <button className="btn-header" onClick={handleRefreshMetadata}>
+              Farm Metadata
+            </button>
+            <button className="btn-header" onClick={clearOutput}>
+              Clear
+            </button>
+          </div>
+        )}
       </div>
 
-      {!collapsed && (
-        <div className="script-runner-body">
+      {!collapsed && activeTab === 'scripts' && (
+        <div className={`script-runner-body ${isResizingScripts ? 'resizing' : ''}`}>
 
-          <div className="script-list">
+          <div className="script-list" style={{ width: scriptsWidth }}>
             {scripts.length > 0 ? (
               <>
                 <div className="script-list-actions">
@@ -239,11 +322,9 @@ function ScriptRunner({ folderName, height, onHeightChange, isResizing, onResize
             )}
           </div>
 
+          <div className="scripts-resize-handle" onMouseDown={handleScriptsResizeStart} />
+
           <div className="script-output-section">
-            <div className="script-output-header">
-              <span>Output</span>
-              <button className="btn-link" onClick={clearOutput}>Clear</button>
-            </div>
             <div className="script-output" ref={outputRef}>
               {output.map((entry, i) => (
                 <div key={i} className={`output-line ${entry.type}`}>
@@ -254,6 +335,44 @@ function ScriptRunner({ folderName, height, onHeightChange, isResizing, onResize
                 <div className="output-placeholder">Script output will appear here...</div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {!collapsed && activeTab === 'terminal' && (
+        <div className="local-terminal-body">
+          <div className="terminal-tabs-bar">
+            {terminals.map(term => (
+              <div
+                key={term.id}
+                className={`terminal-tab ${activeTerminalId === term.id ? 'active' : ''}`}
+                onClick={() => setActiveTerminalId(term.id)}
+              >
+                <span>Terminal {term.id}</span>
+                <button
+                  className="terminal-tab-close"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    closeTerminal(term.id)
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+            <button className="terminal-tab-new" onClick={addTerminal}>+</button>
+            <button className="terminal-tab-clear" onClick={clearTerminals}>Clear All</button>
+          </div>
+          <div className="terminal-instances">
+            {terminals.map(term => (
+              <div
+                key={term.id}
+                className="terminal-instance-wrapper"
+                style={{ display: activeTerminalId === term.id ? 'flex' : 'none' }}
+              >
+                <LocalTerminal id={term.id} />
+              </div>
+            ))}
           </div>
         </div>
       )}

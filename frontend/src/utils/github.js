@@ -226,7 +226,7 @@ export async function deleteCodespace(token, codespaceName) {
 }
 
 /**
- * Create a new codespace for vibefoundry-sandbox
+ * Create a new codespace for vibefoundry-sandbox dev branch
  */
 export async function createCodespace(token) {
   // First get the repo ID
@@ -253,7 +253,7 @@ export async function createCodespace(token) {
     },
     body: JSON.stringify({
       repository_id: repo.id,
-      ref: "main"
+      ref: "dev-branch"
     })
   })
 

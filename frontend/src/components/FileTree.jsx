@@ -543,6 +543,8 @@ const DeleteDialog = ({ node, onConfirm, onCancel }) => {
 
 // Data files that should never show animations (they get auto-deleted)
 const FORBIDDEN_DATA_EXTENSIONS = ['.csv', '.xlsx', '.xls', '.json']
+// Files that should never show animations (internal system files)
+const IGNORED_ANIMATION_FILES = ['time_keeper.txt']
 
 const FileTree = ({
   tree,
@@ -847,6 +849,11 @@ const FileTree = ({
     // Helper to check if path is a data file in app_folder (should be filtered)
     const shouldFilterPath = (path) => {
       if (!path) return false
+
+      // Check for ignored system files (like time_keeper.txt)
+      const filename = path.split('/').pop()
+      if (IGNORED_ANIMATION_FILES.includes(filename)) return true
+
       const pathLower = path.toLowerCase()
       const isInAppFolder = pathLower.includes('/app_folder/') ||
                             pathLower.includes('app_folder/') ||

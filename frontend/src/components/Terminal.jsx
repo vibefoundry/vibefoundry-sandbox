@@ -5,7 +5,7 @@ import '@xterm/xterm/css/xterm.css'
 
 // Fixed terminal size - wider and taller for better Claude Code experience
 const FIXED_COLS = 80
-const FIXED_ROWS = 48
+const FIXED_ROWS = 73
 
 function Terminal({ syncUrl, isConnected, autoLaunchClaude = false }) {
   const terminalRef = useRef(null)

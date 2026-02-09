@@ -78,7 +78,6 @@ body {
 }
 
 .top-bar-right {
-  width: 720px;
   flex-shrink: 0;
   border-right: none;
   border-left: 1px solid var(--color-border);
@@ -114,6 +113,7 @@ body {
 .btn-primary,
 .btn-secondary,
 .btn-danger,
+.btn-connect,
 .btn-sync,
 .btn-github {
   height: var(--btn-height);
@@ -139,6 +139,7 @@ body {
 .btn-primary:hover,
 .btn-secondary:hover,
 .btn-danger:hover,
+.btn-connect:hover,
 .btn-sync:hover,
 .btn-github:hover {
   background: #d8d8d8;
@@ -150,6 +151,7 @@ body {
 .btn-primary:disabled,
 .btn-secondary:disabled,
 .btn-danger:disabled,
+.btn-connect:disabled,
 .btn-sync:disabled,
 .btn-github:disabled {
   opacity: 0.5;
@@ -165,6 +167,23 @@ body {
 
 .btn-flat.btn-primary:hover {
   background: #d8d8d8;
+}
+
+/* Connect button - green accent */
+.btn-connect {
+  background: #22c55e;
+  border-color: #16a34a;
+  color: white;
+}
+
+.btn-connect:hover {
+  background: #16a34a;
+  border-color: #15803d;
+}
+
+.btn-connect:disabled {
+  background: #86efac;
+  border-color: #86efac;
 }
 
 /* Main Area */
@@ -2208,12 +2227,50 @@ body {
 /* Terminal Pane - Right Side Panel */
 .terminal-pane {
   flex-shrink: 0;
-  width: 720px;
   display: flex;
   flex-direction: column;
   background: #ffffff;
   border-left: 1px solid var(--color-border);
   overflow: hidden;
+  position: relative;
+}
+
+.terminal-pane.resizing {
+  user-select: none;
+}
+
+.terminal-resize-handle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  z-index: 10;
+}
+
+.terminal-resize-handle:hover {
+  background: var(--color-accent);
+}
+
+.script-runner-resize-handle {
+  height: 4px;
+  cursor: ns-resize;
+  background: var(--color-border);
+  flex-shrink: 0;
+}
+
+.script-runner-resize-handle:hover {
+  background: var(--color-accent);
+}
+
+.terminal-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
 }
 
 .terminal-launch-screen {
@@ -2251,17 +2308,78 @@ body {
   text-align: center;
 }
 
-.terminal-connect-panel {
-  text-align: center;
-  max-width: 400px;
-  width: 100%;
+/* Codespace Modal - Overlay in Terminal Pane */
+.codespace-modal-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
 }
 
-.terminal-connect-panel h3 {
-  margin: 0 0 16px 0;
-  font-size: 18px;
-  font-weight: 600;
+.codespace-modal {
+  position: relative;
+  background: white;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 24px;
+  box-shadow: var(--shadow-lg);
+  max-width: 90%;
+  max-height: 90%;
+  overflow: auto;
+}
+
+.codespace-modal-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius);
+}
+
+.codespace-modal-close:hover {
+  background: var(--color-bg-subtle);
   color: var(--color-text);
+}
+
+/* Codespace status in top bar */
+.codespace-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--color-bg);
+  border-radius: var(--radius);
+  font-size: var(--font-size-small);
+}
+
+.codespace-status .status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ccc;
+}
+
+.codespace-status .status-dot.connected {
+  background: #22c55e;
+}
+
+.codespace-status .status-text {
+  color: var(--color-text-muted);
 }
 
 /* Terminal Component */

@@ -16,10 +16,11 @@ import {
 import {
   checkSyncServer,
   runFullSync,
-  pushScriptsToCodespace
+  pushScriptsToCodespace,
+  writeTimeKeeper
 } from '../utils/codespaceSync'
 
-function CodespaceSync({ projectPath, onSyncComplete, onConnectionChange }) {
+function CodespaceSync({ projectPath, onSyncComplete, onConnectionChange, currentConnection }) {
   // Auth state
   const [token, setToken] = useState(getStoredToken())
   const [user, setUser] = useState(getStoredUser())
@@ -36,9 +37,10 @@ function CodespaceSync({ projectPath, onSyncComplete, onConnectionChange }) {
   const [isLaunchingCodespace, setIsLaunchingCodespace] = useState(false)
   const [isDeletingCodespace, setIsDeletingCodespace] = useState(false)
 
-  // Sync state
-  const [syncUrl, setSyncUrl] = useState(null)
-  const [isConnected, setIsConnected] = useState(false)
+  // Sync state - initialize from currentConnection if provided
+  const [syncUrl, setSyncUrl] = useState(currentConnection?.syncUrl || null)
+  const [isConnected, setIsConnected] = useState(currentConnection?.isConnected || false)
+  const [isConnecting, setIsConnecting] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
   const [isPushing, setIsPushing] = useState(false)
   const [syncStatus, setSyncStatus] = useState('idle') // idle, syncing, success, error
@@ -58,6 +60,20 @@ function CodespaceSync({ projectPath, onSyncComplete, onConnectionChange }) {
       loadCodespaces()
     }
   }, [token, user])
+
+  // Restore selectedCodespace when codespaces load and there's an existing syncUrl
+  useEffect(() => {
+    if (codespaces.length > 0 && syncUrl && !selectedCodespace) {
+      // Find the codespace that matches the syncUrl
+      const matchingCodespace = codespaces.find(cs => {
+        const csUrl = getCodespaceSyncUrl(cs)
+        return csUrl === syncUrl
+      })
+      if (matchingCodespace) {
+        setSelectedCodespace(matchingCodespace)
+      }
+    }
+  }, [codespaces, syncUrl, selectedCodespace])
 
   // Auto-sync when connected and enabled
   useEffect(() => {
@@ -124,6 +140,21 @@ function CodespaceSync({ projectPath, onSyncComplete, onConnectionChange }) {
     const interval = setInterval(keepAlive, 120000)
     return () => clearInterval(interval)
   }, [token, selectedCodespace])
+
+  // Write time_keeper.txt every minute to keep codespace active
+  useEffect(() => {
+    if (!syncUrl || !isConnected) return
+
+    // Write immediately on connect
+    writeTimeKeeper(syncUrl)
+
+    // Then every minute
+    const interval = setInterval(() => {
+      writeTimeKeeper(syncUrl)
+    }, 60000)
+
+    return () => clearInterval(interval)
+  }, [syncUrl, isConnected])
 
   // Notify parent of connection changes
   useEffect(() => {
@@ -303,6 +334,50 @@ function CodespaceSync({ projectPath, onSyncComplete, onConnectionChange }) {
     } catch (err) {
       setSyncMessage('Failed to start codespace: ' + err.message)
       setIsLaunchingCodespace(false)
+    }
+  }
+
+  const handleConnect = async () => {
+    if (!selectedCodespace) return
+    setIsConnecting(true)
+    setSyncMessage('Connecting...')
+    setSyncStatus('syncing')
+
+    try {
+      // Start the codespace if not already running
+      if (selectedCodespace.state !== 'Available') {
+        setSyncMessage('Starting codespace...')
+        await startCodespace(token, selectedCodespace.name)
+      }
+
+      // Poll for sync server to respond
+      const pollForReady = async (attempts = 0) => {
+        if (attempts > 120) { // Max 2 minutes at 1 second intervals
+          setIsConnecting(false)
+          setSyncMessage('Connection timed out - codespace may still be starting')
+          setSyncStatus('error')
+          return
+        }
+
+        await loadCodespaces()
+        const connected = await checkSyncServer(syncUrl)
+
+        if (connected) {
+          setIsConnected(true)
+          setIsConnecting(false)
+          setSyncMessage('Connected!')
+          setSyncStatus('success')
+        } else {
+          setSyncMessage(`Waiting for sync server... (${attempts}s)`)
+          setTimeout(() => pollForReady(attempts + 1), 1000)
+        }
+      }
+
+      setTimeout(() => pollForReady(0), 1000)
+    } catch (err) {
+      setSyncMessage('Failed to connect: ' + err.message)
+      setSyncStatus('error')
+      setIsConnecting(false)
     }
   }
 
@@ -496,6 +571,15 @@ function CodespaceSync({ projectPath, onSyncComplete, onConnectionChange }) {
           >
             {isCreatingCodespace ? 'Creating...' : 'New'}
           </button>
+          {selectedCodespace && (
+            <button
+              className="btn-small btn-connect"
+              onClick={handleConnect}
+              disabled={isConnecting || isConnected}
+            >
+              {isConnecting ? 'Connecting...' : isConnected ? 'Connected' : 'Connect'}
+            </button>
+          )}
           {selectedCodespace && (
             <button
               className="btn-small"

@@ -22,6 +22,27 @@ function shouldBlockSync(filename) {
 }
 
 /**
+ * Write time_keeper.txt to codespace to keep it alive
+ */
+export async function writeTimeKeeper(baseUrl) {
+  try {
+    const timestamp = new Date().toISOString()
+    const response = await fetch(`${baseUrl}/scripts/time_keeper.txt`, {
+      method: "POST",
+      mode: "cors",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ content: `Last ping: ${timestamp}\n` })
+    })
+    return response.ok
+  } catch (err) {
+    console.error("Time keeper write failed:", err)
+    return false
+  }
+}
+
+/**
  * Check if sync server is running
  */
 export async function checkSyncServer(baseUrl) {
