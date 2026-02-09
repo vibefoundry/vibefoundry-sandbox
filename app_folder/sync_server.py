@@ -2,6 +2,7 @@
 """
 VibeFoundry Sync Server
 Simple HTTP server for browser-based file sync with VibeFoundry Assistant
+Uses watchdog for native file system events - pushes changes via WebSocket
 """
 
 from flask import Flask, jsonify, request, send_file
@@ -16,10 +17,26 @@ import struct
 import fcntl
 import termios
 import signal
+import threading
+import time
+
+# Watchdog for native file system events
+try:
+    from watchdog.observers import Observer
+    from watchdog.events import FileSystemEventHandler
+    WATCHDOG_AVAILABLE = True
+except ImportError:
+    WATCHDOG_AVAILABLE = False
+    print("WARNING: watchdog not installed. File watching disabled.")
+    print("Install with: pip install watchdog")
 
 app = Flask(__name__)
 CORS(app)  # Allow browser connections from any origin
 sock = Sock(app)
+
+# Connected watch clients (WebSocket connections)
+watch_clients = set()
+watch_clients_lock = threading.Lock()
 
 # Log all requests to stdout to keep codespace alive
 @app.after_request
@@ -32,6 +49,122 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 APP_FOLDER = os.path.join(BASE_DIR, "app_folder")
 SCRIPTS_FOLDER = os.path.join(APP_FOLDER, "scripts")
 METADATA_FOLDER = os.path.join(APP_FOLDER, "meta_data")
+
+# Files/patterns to ignore in file watcher
+IGNORE_PATTERNS = [
+    '.ds_store', 'thumbs.db', 'desktop.ini',
+    '.git', '__pycache__', '.pyc', '.pyo',
+    'zone.identifier', '.tmp', '.temp', '~',
+    'sync_server.py', 'metadatafarmer.py'
+]
+
+
+def should_ignore(path):
+    """Check if file should be ignored"""
+    name = os.path.basename(path).lower()
+    for pattern in IGNORE_PATTERNS:
+        if pattern in name:
+            return True
+    if name.startswith('.'):
+        return True
+    return False
+
+
+def broadcast_change(change_type, filepath):
+    """Broadcast file change to all connected watch clients"""
+    relative_path = os.path.relpath(filepath, APP_FOLDER)
+    message = json.dumps({
+        "type": "file_change",
+        "change": change_type,
+        "path": relative_path,
+        "timestamp": time.time()
+    })
+
+    with watch_clients_lock:
+        dead_clients = set()
+        for client in watch_clients:
+            try:
+                client.send(message)
+            except:
+                dead_clients.add(client)
+        # Remove disconnected clients
+        watch_clients.difference_update(dead_clients)
+
+
+if WATCHDOG_AVAILABLE:
+    class AppFolderHandler(FileSystemEventHandler):
+        """Handler for file system events in app_folder"""
+
+        def __init__(self):
+            self._recent_events = {}
+            self._lock = threading.Lock()
+
+        def _debounce(self, path):
+            """Debounce rapid events on the same file"""
+            now = time.time()
+            with self._lock:
+                if now - self._recent_events.get(path, 0) < 0.5:
+                    return True
+                self._recent_events[path] = now
+                # Clean old entries
+                self._recent_events = {k: v for k, v in self._recent_events.items() if now - v < 5.0}
+            return False
+
+        def _handle_event(self, event, change_type):
+            if event.is_directory:
+                return
+            path = event.src_path
+            if should_ignore(path):
+                return
+            if self._debounce(path):
+                return
+
+            print(f"[WATCH] {change_type}: {os.path.relpath(path, APP_FOLDER)}", flush=True)
+            broadcast_change(change_type, path)
+
+        def on_created(self, event):
+            self._handle_event(event, "created")
+
+        def on_modified(self, event):
+            self._handle_event(event, "modified")
+
+        def on_deleted(self, event):
+            self._handle_event(event, "deleted")
+
+
+# Global observer
+file_observer = None
+
+
+def start_file_watcher():
+    """Start the file watcher"""
+    global file_observer
+
+    if not WATCHDOG_AVAILABLE:
+        print("File watcher not available (watchdog not installed)")
+        return False
+
+    try:
+        file_observer = Observer()
+        handler = AppFolderHandler()
+
+        # Watch the entire app_folder
+        file_observer.schedule(handler, APP_FOLDER, recursive=True)
+        file_observer.start()
+        print(f"File watcher started on {APP_FOLDER}", flush=True)
+        return True
+    except Exception as e:
+        print(f"Failed to start file watcher: {e}", flush=True)
+        return False
+
+
+def stop_file_watcher():
+    """Stop the file watcher"""
+    global file_observer
+    if file_observer:
+        file_observer.stop()
+        file_observer.join(timeout=1.0)
+        file_observer = None
 
 
 @app.route("/health", methods=["GET"])
@@ -308,6 +441,45 @@ def reset_codespace():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@sock.route("/watch")
+def watch(ws):
+    """WebSocket endpoint for file change notifications"""
+    print("[WATCH] Client connected", flush=True)
+
+    with watch_clients_lock:
+        watch_clients.add(ws)
+
+    try:
+        # Send initial connected message
+        ws.send(json.dumps({
+            "type": "connected",
+            "watching": APP_FOLDER,
+            "watchdog_available": WATCHDOG_AVAILABLE
+        }))
+
+        # Keep connection alive - respond to pings
+        while True:
+            try:
+                data = ws.receive(timeout=30)
+                if data:
+                    try:
+                        msg = json.loads(data)
+                        if msg.get('type') == 'ping':
+                            ws.send(json.dumps({"type": "pong"}))
+                    except:
+                        pass
+            except:
+                # Timeout or error, send keepalive
+                try:
+                    ws.send(json.dumps({"type": "keepalive"}))
+                except:
+                    break
+    finally:
+        with watch_clients_lock:
+            watch_clients.discard(ws)
+        print("[WATCH] Client disconnected", flush=True)
+
+
 def set_winsize(fd, row, col, xpix=0, ypix=0):
     """Set terminal window size"""
     winsize = struct.pack("HHHH", row, col, xpix, ypix)
@@ -375,4 +547,14 @@ def terminal(ws):
 
 if __name__ == "__main__":
     print("Starting VibeFoundry Sync Server on port 8787...")
-    app.run(host="0.0.0.0", port=8787, debug=False)
+
+    # Start file watcher
+    if start_file_watcher():
+        print("File watcher: using native OS events (inotify)")
+    else:
+        print("File watcher: disabled")
+
+    try:
+        app.run(host="0.0.0.0", port=8787, debug=False)
+    finally:
+        stop_file_watcher()
