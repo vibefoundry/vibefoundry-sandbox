@@ -493,7 +493,7 @@ def set_winsize(fd, row, col, xpix=0, ypix=0):
 
 
 # Fixed terminal size
-FIXED_COLS = 85
+FIXED_COLS = 90
 FIXED_ROWS = 40
 
 
