@@ -492,9 +492,9 @@ def set_winsize(fd, row, col, xpix=0, ypix=0):
     fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
 
 
-# Fixed terminal size
-FIXED_COLS = 80
-FIXED_ROWS = 50
+# Default terminal size (client can override via resize message)
+DEFAULT_COLS = 90
+DEFAULT_ROWS = 25
 
 
 @sock.route("/terminal")
@@ -509,7 +509,7 @@ def terminal(ws):
         os.execvp("bash", ["bash", "-l"])
     else:
         # Parent process - relay data
-        set_winsize(fd, FIXED_ROWS, FIXED_COLS)
+        set_winsize(fd, DEFAULT_ROWS, DEFAULT_COLS)
 
         # Make fd non-blocking
         flags = fcntl.fcntl(fd, fcntl.F_GETFL)
@@ -536,7 +536,9 @@ def terminal(ws):
                             try:
                                 msg = json.loads(data)
                                 if msg.get('type') == 'resize':
-                                    set_winsize(fd, FIXED_ROWS, FIXED_COLS)
+                                    cols = msg.get('cols', DEFAULT_COLS)
+                                    rows = msg.get('rows', DEFAULT_ROWS)
+                                    set_winsize(fd, rows, cols)
                                 elif msg.get('type') == 'ping':
                                     ws.send('{"type":"pong"}')
                             except:
