@@ -493,8 +493,8 @@ def set_winsize(fd, row, col, xpix=0, ypix=0):
 
 
 # Default terminal size (client can override via resize message)
-DEFAULT_COLS = 90
-DEFAULT_ROWS = 25
+DEFAULT_COLS = 100
+DEFAULT_ROWS = 100
 
 
 @sock.route("/terminal")
